@@ -8,36 +8,36 @@ export default function App() {
   const [initializing, setInitializing] = useState(true);
   const [authError, setAuthError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    try {
-      // Sign out on app load
-      auth().signOut();
+  // useEffect(() => {
+  //   try {
+  //     // Sign out on app load
+  //     auth().signOut();
 
-      const subscriber = auth().onAuthStateChanged(() => {
-        setInitializing(false);
-      });
-      return subscriber;
-    } catch (error) {
-      setAuthError(error as Error);
-      setInitializing(false);
-    }
-  }, []);
+  //     const subscriber = auth().onAuthStateChanged(() => {
+  //       setInitializing(false);
+  //     });
+  //     return subscriber;
+  //   } catch (error) {
+  //     setAuthError(error as Error);
+  //     setInitializing(false);
+  //   }
+  // }, []);
 
-  if (initializing) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Loading...</Text>
-      </View>
-    );
-  }
+  // if (initializing) {
+  //   return (
+  //     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+  //       <Text>Loading...</Text>
+  //     </View>
+  //   );
+  // }
 
-  if (authError) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Error initializing authentication: {authError.message}</Text>
-      </View>
-    );
-  }
+  // if (authError) {
+  //   return (
+  //     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+  //       <Text>Error initializing authentication: {authError.message}</Text>
+  //     </View>
+  //   );
+  // }
 
   return (
     <NavigationContainer>
