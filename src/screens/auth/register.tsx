@@ -20,12 +20,7 @@ import { AuthInput } from '../../components/auth/AuthInput';
 import { colors } from '../../utils/colors';
 import { register } from '../../services/authServices';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-
-type RootStackParamList = {
-    Login: undefined;
-    Register: undefined;
-    MainApp: undefined;
-};
+import { RootStackParamList } from '../../types/stackparamlist';
 
 
 type RegisterScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Register'>;
@@ -152,7 +147,7 @@ export default function RegisterScreen() {
                                 value={username}
                                 onChangeText={setUsername}
                                 error={usernameError}
-                                leftIcon={<Icon name='User' size={20} color={colors.darkGray} />}
+                                leftIcon={<Icon name='user' size={20} color={colors.darkGray} />}
                             />
 
                             <AuthInput
@@ -160,7 +155,7 @@ export default function RegisterScreen() {
                                 value={displayName}
                                 onChangeText={setDisplayName}
                                 error={displayNameError}
-                                leftIcon={<Icon name='User' size={20} color={colors.darkGray} />}
+                                leftIcon={<Icon name='user' size={20} color={colors.darkGray} />}
                             />
 
                             <AuthInput
@@ -170,7 +165,7 @@ export default function RegisterScreen() {
                                 error={emailError}
                                 keyboardType="email-address"
                                 autoCapitalize="none"
-                                leftIcon={<Icon name='Mail' size={20} color={colors.darkGray} />}
+                                leftIcon={<Icon name='envelope' size={20} color={colors.darkGray} />}
                             />
 
                             <AuthInput
@@ -179,7 +174,7 @@ export default function RegisterScreen() {
                                 onChangeText={setPassword}
                                 error={passwordError}
                                 secureTextEntry
-                                leftIcon={<Icon name='Lock' size={20} color={colors.darkGray} />}
+                                leftIcon={<Icon name='lock' size={20} color={colors.darkGray} />}
                             />
 
                             <TouchableOpacity

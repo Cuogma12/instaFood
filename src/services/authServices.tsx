@@ -1,15 +1,48 @@
-import auth from '@react-native-firebase/auth';
-import firestore from '@react-native-firebase/firestore';
-import type { RegisterResult } from '../type/user';
+import { 
+  getAuth, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword 
+} from '@react-native-firebase/auth';
+import { 
+  getFirestore, 
+  collection, 
+  doc, 
+  getDoc, 
+  setDoc, 
+  query, 
+  where, 
+  getDocs,
+  updateDoc,
+  serverTimestamp 
+} from '@react-native-firebase/firestore';
+import type { RegisterResult, UserProfileData } from '../types/user';
 
-const db = firestore();
+const db = getFirestore();
 
 // ✅ Kiểm tra username đã tồn tại chưa
 const isUsernameAvailable = async (username: string): Promise<boolean> => {
-  const usersRef = db.collection('Users');
-  const q = usersRef.where('username', '==', username);
-  const querySnapshot = await q.get();
+  const usersRef = collection(db, 'Users');
+  const q = query(usersRef, where('username', '==', username));
+  const querySnapshot = await getDocs(q);
   return querySnapshot.empty;
+};
+
+// Kiểm tra username mới có sẵn không (loại trừ người dùng hiện tại)
+export const isUsernameAvailableForUpdate = async (username: string, currentUid: string): Promise<boolean> => {
+  try {
+    const usersRef = collection(db, 'Users');
+    const q = query(usersRef, where('username', '==', username));
+    const querySnapshot = await getDocs(q);
+    
+    if (querySnapshot.empty) return true;
+    
+    // Nếu username đã tồn tại, kiểm tra xem có phải là username của chính người dùng hiện tại không
+    const docs = querySnapshot.docs;
+    return docs.length === 1 && docs[0].id === currentUid;
+  } catch (error) {
+    console.error('Error checking username availability:', error);
+    return false;
+  }
 };
 
 // ✅ Đăng nhập
@@ -18,10 +51,11 @@ export const login = async (
   password: string
 ): Promise<RegisterResult> => {
   try {
-    const userCredential = await auth().signInWithEmailAndPassword(email, password);
+    const auth = getAuth();
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
     const userId = userCredential.user.uid;
-    const userRef = db.collection('Users').doc(userId);
-    const userSnap = await userRef.get();
+    const userRef = doc(db, 'Users', userId);
+    const userSnap = await getDoc(userRef);
 
     if (!userSnap.exists) {
       throw new Error('Người dùng không tồn tại');
@@ -95,11 +129,12 @@ export const register = async (
       };
     }
 
-    const userCredential = await auth().createUserWithEmailAndPassword(email, password);
+    const auth = getAuth();
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     const userId = userCredential.user.uid;
 
-    const userRef = db.collection('Users').doc(userId);
-    await userRef.set({
+    const userRef = doc(db, 'Users', userId);
+    await setDoc(userRef, {
       uid: userId,
       email,
       username,
@@ -107,7 +142,7 @@ export const register = async (
       photoURL: null,
       bio: '',
       role: 'user',
-      createdAt: firestore.FieldValue.serverTimestamp(),
+      createdAt: serverTimestamp(),
     });
 
     return {
@@ -127,5 +162,47 @@ export const register = async (
     }
 
     return { success: false, message };
+  }
+};
+
+// Lấy thông tin người dùng từ Firestore
+export const getUserProfile = async (uid: string): Promise<UserProfileData | null> => {
+  try {
+    const userRef = doc(db, 'Users', uid);
+    const userSnap = await getDoc(userRef);
+    
+    if (!userSnap.exists) return null;
+    
+    const userData = userSnap.data();
+    return {
+      ...userData,
+      createdAt: userData?.createdAt?.toDate()
+    } as UserProfileData;
+  } catch (error) {
+    console.error('Error fetching user profile:', error);
+    return null;
+  }
+};
+
+export const updateUserProfile = async (
+  uid: string,
+  data: {
+    displayName?: string;
+    username?: string,
+    bio?: string;
+    photoURL?: string;
+  }
+): Promise<{success : boolean; message: string}> => {
+  try {
+    const userRef = doc(db, 'Users', uid);
+    await updateDoc(userRef, data);
+    return { success: true, message: 'Cập nhật thông tin thành công' };
+  } catch (error: any) {
+    if (error.code === 'unavailable') {
+      return { success: false, message: 'Lỗi mạng, vui lòng thử lại sau' };
+    }
+
+    console.error('Update user profile error:', error);
+    return { success: false, message: 'Cập nhật thông tin thất bại' };
   }
 };

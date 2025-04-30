@@ -15,14 +15,9 @@ import ActivityScreen from '../screens/user/ActivityScreen';
 import ProfileScreen from '../screens/user/ProfileScreen';
 import RenderHeader from '../screens/user/ProfileScreen';
 import EditProfile from '../screens/user/EditProfile';
+import SettingScreen from '../screens/user/SettingScreen';
+import { RootStackParamList } from '../types/stackparamlist'
 
-// Kiểu RootStackParamList để khai báo các màn hình trong navigation
-export type RootStackParamList = {
-  Login: undefined;
-  Register: undefined;
-  MainApp: undefined;
-  EditProfile: undefined;
-};
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -30,7 +25,7 @@ const Tab = createBottomTabNavigator();
 //Component Header
 
 // Màn hình Tab chính
-function MainAppTabs() {
+export function MainApp() {
   return (
     <Tab.Navigator
       initialRouteName="Home"
@@ -45,10 +40,12 @@ function MainAppTabs() {
         },
         headerStyle: {
           backgroundColor: colors.primary,
+
         },
         headerTitleStyle: {
           fontWeight: 'bold',
           color: colors.text,
+       
         },
       }}
     >
@@ -56,7 +53,7 @@ function MainAppTabs() {
         name="Home"
         component={HomeScreen}
         options={{
-          title: 'Foodgram',
+          title: 'instaFood',
           tabBarIcon: ({ color }) => <Icon name="home" size={24} color={color} />,
         }}
       />
@@ -117,7 +114,7 @@ export default function AppNavigator() {
         },
       }}
     >
-      <Stack.Screen name="MainApp" component={MainAppTabs} />
+      <Stack.Screen name="MainApp" component={MainApp} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
       <Stack.Screen
@@ -126,6 +123,14 @@ export default function AppNavigator() {
         options={{
           headerShown: true,
           title: 'Chỉnh sửa trang cá nhân'
+        }}
+      />
+      <Stack.Screen
+        name="SettingScreen"
+        component={SettingScreen}
+        options={{
+          headerShown: true,
+          title: 'Cài đặt'
         }}
       />
     </Stack.Navigator>

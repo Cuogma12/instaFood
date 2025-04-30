@@ -14,19 +14,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/FontAwesome';  // Hoặc các bộ icon khác như Ionicons, MaterialIcons
- 
+
 import { useNavigation } from '@react-navigation/native';
 import { AuthInput } from '../../components/auth/AuthInput';
 import { colors } from '../../utils/colors';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { login } from '../../services/authServices';
-
-
-type RootStackParamList = {
-    Login: undefined;
-    Register: undefined;
-    MainApp: undefined;
-};
+import { RootStackParamList } from '../../types/stackparamlist';
+import { AdminStackParamList } from '../../types/stackparamlist'
+import HomeScreen from '../user/HomeScreen';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -40,7 +36,7 @@ export default function LoginScreen() {
 
     const validateForm = () => {
         let isValid = true;
-        
+
         // Validate email
         if (!email.trim()) {
             setEmailError('Vui lòng nhập email');
@@ -51,7 +47,7 @@ export default function LoginScreen() {
         } else {
             setEmailError('');
         }
-        
+
         // Validate password
         if (!password) {
             setPasswordError('Vui lòng nhập mật khẩu');
@@ -59,48 +55,59 @@ export default function LoginScreen() {
         } else {
             setPasswordError('');
         }
-        
+
         return isValid;
     };
 
     const handleLogin = async () => {
-        // Reset error messages
         setEmailError('');
         setPasswordError('');
 
-        // Kiểm tra hợp lệ trước khi login
         if (!validateForm()) {
             return;
         }
 
         setLoading(true);
-        try {
-            const result = await login(email, password);
-            
-            if (result.success) {
-                navigation.navigate('MainApp');
-            } else {
-                const errorMessage = result.message || 'Đăng nhập thất bại';
-                // Hiển thị lỗi dựa trên loại lỗi trả về
-                if (errorMessage.includes('Email') || errorMessage.includes('email')) {
-                    setEmailError(errorMessage);
-                } else if (errorMessage.includes('Mật khẩu')) {
-                    setPasswordError(errorMessage);
-                } else {
-                    // Nếu lỗi không xác định được là email hay password
-                    setEmailError(errorMessage);
-                }
-            }
-        } catch (error) {
-            console.error('Login error:', error);
-            setEmailError('Đăng nhập thất bại');
-        } finally {
+    try {
+  const result = await login(email, password);
+
+  if (!result.success) {
+    const errorMessage = result.message || 'Đăng nhập thất bại';
+    if (errorMessage.toLowerCase().includes('email')) {
+      setEmailError(errorMessage);
+    } else if (errorMessage.toLowerCase().includes('mật khẩu') || errorMessage.toLowerCase().includes('password')) {
+      setPasswordError(errorMessage);
+    } else {
+      // Các lỗi khác chung chung
+      setEmailError(errorMessage);
+    }
+    return;
+  }
+
+  // ✅ Nếu login thành công
+  if (result.user?.role === 'admin') {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Admin' }],
+    });
+  } else {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'MainApp' }],
+    });
+  }
+  
+} catch (error: any) {
+  console.error('Login error:', error.message);
+  setEmailError('Đã xảy ra lỗi, vui lòng thử lại.');
+}
+ {
             setLoading(false);
         }
     };
 
     return (
-        <ImageBackground 
+        <ImageBackground
             source={require('../../assets/images/backgroudlogin.png')}
             style={styles.backgroundImage}
         >
@@ -129,7 +136,7 @@ export default function LoginScreen() {
                                 error={emailError}
                                 keyboardType="email-address"
                                 autoCapitalize="none"
-                                leftIcon={<Icon name='Mail' size={20} color={colors.darkGray} />}
+                                leftIcon={<Icon name='envelope' size={20} color={colors.darkGray} />}
                             />
 
                             <AuthInput
@@ -138,7 +145,7 @@ export default function LoginScreen() {
                                 onChangeText={setPassword}
                                 error={passwordError}
                                 secureTextEntry
-                                leftIcon={<Icon name='Lock' size={20} color={colors.darkGray} />}
+                                leftIcon={<Icon name='lock' size={20} color={colors.darkGray} />}
                             />
 
                             <TouchableOpacity
@@ -168,7 +175,7 @@ export default function LoginScreen() {
 
                             <TouchableOpacity
                                 style={styles.registerLink}
-                                onPress={() => navigation.navigate('MainApp')}
+                                onPress={() => navigation.navigate('MainApp', { screen: 'HomeSreen' })}
                             >
                                 <Text style={styles.registerLinkText}>
                                     Dùng với tư cách khách
