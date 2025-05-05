@@ -6,18 +6,18 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 import moment from 'moment';
 import 'moment/locale/vi';
 import RecipePost from '../../components/user/RecipePost';
+import ReviewPost from '../../components/user/ReviewPost';
 
 function PostItem({ post }: { post: any }) {
   const [isFavorite, setIsFavorite] = React.useState(false);
   const [isVisible, setIsVisible] = React.useState(true);
   const [showFullCaption, setShowFullCaption] = React.useState(false);
-  const CAPTION_LIMIT = 120;
+  const CAPTION_LIMIT = 150; // Tăng giới hạn ký tự lên 150
 
   moment.locale('vi');
 
   const handleFavorite = () => {
     setIsFavorite(!isFavorite);
-    // TODO: Gọi API thêm/xóa khỏi danh sách yêu thích nếu cần
   };
 
   const handleHide = () => {
@@ -26,37 +26,39 @@ function PostItem({ post }: { post: any }) {
 
   const renderCaption = () => {
     if (!post.caption) return null;
-    if (post.caption.length <= CAPTION_LIMIT) {
-      return <Text style={styles.caption}>{post.caption}</Text>;
-    }
+    
+    const shouldTruncate = post.caption.length > CAPTION_LIMIT;
+    const displayedText = shouldTruncate && !showFullCaption 
+      ? post.caption.slice(0, CAPTION_LIMIT) + '...'
+      : post.caption;
+
     return (
-      <>
-        <Text style={styles.caption}>
-          {showFullCaption ? post.caption : post.caption.slice(0, CAPTION_LIMIT) + '...'}
-        </Text>
-        <TouchableOpacity onPress={() => setShowFullCaption(!showFullCaption)}>
-          <Text style={{ color: colors.primary, marginLeft: 14, marginBottom: 4, fontWeight: 'bold' }}>
-            {showFullCaption ? 'Thu gọn' : 'Xem thêm'}
-          </Text>
-        </TouchableOpacity>
-      </>
+      <View>
+        <Text style={styles.caption}>{displayedText}</Text>
+        {shouldTruncate && (
+          <TouchableOpacity 
+            onPress={() => setShowFullCaption(!showFullCaption)}
+            style={styles.readMoreButton}
+          >
+            <Text style={styles.readMoreText}>
+              {showFullCaption ? 'Thu gọn' : 'Xem thêm'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
     );
   };
 
   const renderPostContent = () => {
     if (post.postType === 'review' && post.reviewDetails) {
-      return (
-        <View>
-          <Text style={{ fontWeight: 'bold', fontSize: 16 }}>Nhà hàng: {post.reviewDetails.restaurantName}</Text>
-          <Text>Đánh giá: {post.reviewDetails.rating} ⭐</Text>
-          <Text>{post.reviewDetails.content}</Text>
-        </View>
-      );
+      return <ReviewPost 
+        reviewDetails={post.reviewDetails} 
+        caption={post.caption}
+        location={post.location}
+      />;
     }
     if (post.postType === 'recipe' && post.recipeDetails) {
-      return(
-        <RecipePost recipeDetails={post.recipeDetails} caption={post.caption} />
-      );
+      return <RecipePost recipeDetails={post.recipeDetails} caption={post.caption} />;
     }
     // Mặc định cho post thường hoặc các loại khác
     return renderCaption();
@@ -173,115 +175,123 @@ const styles = StyleSheet.create({
   postContainer: {
     backgroundColor: '#fff',
     marginBottom: 18,
-    borderRadius: 18,
-    marginHorizontal: 8,
-    padding: 0,
+    borderRadius: 20,
+    marginHorizontal: 12,
     shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 10,
-    elevation: 4,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
     borderWidth: 1,
-    borderColor: '#f2f2f2',
+    borderColor: '#f0f0f0',
     overflow: 'hidden',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 14,
-    backgroundColor: '#F8F8FF',
-    borderTopLeftRadius: 18,
-    borderTopRightRadius: 18,
+    padding: 16,
+    backgroundColor: '#F8F9FA',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#f2f2f2',
+    borderBottomColor: '#f0f0f0',
   },
   favoriteBtn: {
     padding: 6,
     marginLeft: 6,
   },
   avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     marginRight: 12,
     backgroundColor: colors.lightGray,
     borderWidth: 2,
     borderColor: colors.primary,
   },
   username: {
-    fontWeight: 'bold',
-    color: colors.text, // Đổi màu tên nổi bật
-    fontSize: 17,
+    fontWeight: '600',
+    color: colors.text,
+    fontSize: 16,
     marginBottom: 2,
   },
   time: {
     color: colors.darkGray,
-    fontSize: 12,
+    fontSize: 13,
   },
   caption: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 22,
     marginBottom: 4,
-    marginHorizontal: 14,
-    marginTop: 8,
-    fontWeight: '500',
+    marginHorizontal: 16,
+    marginTop: 12,
   },
   hashtag: {
-    color: '#1DA1F2', // Đổi màu hashtag xanh nổi bật
-    fontSize: 15,
-    marginBottom: 6,
-    marginHorizontal: 14,
-    fontWeight: 'bold',
+    color: colors.primary,
+    fontSize: 14,
+    marginBottom: 8,
+    marginHorizontal: 16,
+    fontWeight: '500',
   },
   postImage: {
     width: '100%',
-    height: 220,
-    borderRadius: 0,
-    marginBottom: 8,
+    height: 300,
     backgroundColor: colors.lightGray,
   },
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: '#f2f2f2',
-    paddingTop: 10,
-    paddingBottom: 10,
-    paddingHorizontal: 14,
-    backgroundColor: '#F8F8FF',
-    borderBottomLeftRadius: 18,
-    borderBottomRightRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: '#F8F9FA',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
   },
   actionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 30,
-    padding: 6,
-    borderRadius: 8,
     backgroundColor: '#fff',
-    shadowColor: '#FF4C61',
-    shadowOpacity: 0.05,
-    shadowRadius: 0.5,
-    elevation: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
   },
   actionBtn1: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 90,
-    padding: 6,
-    borderRadius: 8,
+    marginLeft: 'auto',
     backgroundColor: '#fff',
-    shadowColor: '#FF4C61',
-    shadowOpacity: 0.05,
-    shadowRadius: 0.5,
-    elevation: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
   },
   actionText: {
     marginLeft: 6,
-    color: colors.text,
-    fontSize: 15,
+    fontSize: 14,
+    fontWeight: '600',
   },
   hideBtn: {
     padding: 6,
     marginLeft: 6,
+  },
+  readMoreButton: {
+    marginLeft: 16,
+    marginBottom: 8,
+  },
+  readMoreText: {
+    color: colors.primary,
+    fontWeight: '600',
   },
 });

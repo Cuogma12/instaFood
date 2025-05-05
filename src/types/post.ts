@@ -2,7 +2,6 @@
 export enum PostType {
   RECIPE = 'recipe',      // Công thức nấu ăn
   REVIEW = 'review',      // Đánh giá món ăn
-  RESTAURANT = 'location', // Chia sẻ quán ăn
   GENERAL = 'normal'     // Bài đăng thông thường
 }
 
@@ -54,22 +53,16 @@ export interface ReviewPost extends BasePost {
     price?: number;         // Giá (nếu có)
     pros: string[];         // Điểm tốt
     cons: string[];         // Điểm chưa tốt
-  };
-}
-
-// Chia sẻ quán ăn
-export interface RestaurantPost extends BasePost {
-  postType: PostType.RESTAURANT;
-  restaurantDetails: {
-    name: string;           // Tên quán
-    cuisineType: string[];  // Loại ẩm thực
-    priceRange: 'low' | 'medium' | 'high'; // Mức giá
-    contactInfo?: {
-      phone?: string;
-      website?: string;
+    restaurantInfo?: {
+      name: string;         // Tên nhà hàng
+      cuisineType?: string[]; // Loại ẩm thực
+      priceRange?: 'low' | 'medium' | 'high'; // Mức giá
+      contactInfo?: {
+        phone?: string;
+        website?: string;
+      };
+      openingHours?: string;
     };
-    openingHours?: string;
-    mustTry?: string[];     // Món đáng thử
   };
 }
 
@@ -79,7 +72,7 @@ export interface GeneralPost extends BasePost {
 }
 
 // Union type cho tất cả loại bài đăng
-export type Post = RecipePost | ReviewPost | RestaurantPost | GeneralPost;
+export type Post = RecipePost | ReviewPost | GeneralPost;
 
 // Type dùng khi tạo bài đăng mới
 export interface CreatePostData {
@@ -99,7 +92,6 @@ export interface CreatePostData {
   };
   recipeDetails?: RecipePost['recipeDetails'];
   reviewDetails?: ReviewPost['reviewDetails'];
-  restaurantDetails?: RestaurantPost['restaurantDetails'];
   createdAt: String;
 }
 

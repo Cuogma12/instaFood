@@ -79,8 +79,6 @@ export default function CreatePostScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [website, setWebsite] = useState('');
   const [openingHours, setOpeningHours] = useState('');
-  const [mustTryDishes, setMustTryDishes] = useState<string[]>([]);
-  const [dishInput, setDishInput] = useState('');
 
   // Location states (common for all types)
   const [locationName, setLocationName] = useState('');
@@ -211,15 +209,6 @@ export default function CreatePostScreen() {
     }
   };
 
-  // Xử lý thêm món đáng thử (cho restaurant)
-  const addMustTryDish = () => {
-    const dish = dishInput.trim();
-    if (dish && !mustTryDishes.includes(dish)) {
-      setMustTryDishes([...mustTryDishes, dish]);
-      setDishInput('');
-    }
-  };
-
   // Hàm xử lý chọn/bỏ chọn category
   const toggleCategorySelection = (category: Category) => {
     const isSelected = selectedCategories.some(cat => cat.categoryId === category.categoryId);
@@ -284,20 +273,16 @@ export default function CreatePostScreen() {
             price: price ? parseFloat(price) : undefined,
             pros,
             cons,
-          };
-          break;
-
-        case PostType.RESTAURANT:
-          postData.restaurantDetails = {
-            name: restaurantName,
-            cuisineType: cuisineTypes,
-            priceRange,
-            contactInfo: {
-              phone: phoneNumber,
-              website,
-            },
-            openingHours,
-            mustTry: mustTryDishes,
+            restaurantInfo: {
+              name: restaurantName,
+              cuisineType: cuisineTypes,
+              priceRange,
+              contactInfo: {
+                phone: phoneNumber || undefined,
+                website: website || undefined,
+              },
+              openingHours: openingHours || undefined,
+            }
           };
           break;
 
@@ -535,6 +520,124 @@ export default function CreatePostScreen() {
                 keyboardType="numeric"
               />
             </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Thông tin nhà hàng</Text>
+              <TextInput
+                style={styles.input}
+                value={restaurantName}
+                onChangeText={setRestaurantName}
+                placeholder="Tên nhà hàng"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Loại ẩm thực</Text>
+              <View style={styles.tagInputContainer}>
+                <TextInput
+                  style={styles.tagInput}
+                  value={cuisineInput}
+                  onChangeText={setCuisineInput}
+                  placeholder="Thêm loại ẩm thực"
+                  onSubmitEditing={addCuisine}
+                />
+                <TouchableOpacity style={styles.addButton} onPress={addCuisine}>
+                  <Icon name="plus" size={16} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.tagsContainer}>
+                {cuisineTypes.map((cuisine, index) => (
+                  <View key={`cuisine-${index}`} style={styles.tag}>
+                    <Text style={styles.tagText}>{cuisine}</Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        const newCuisines = [...cuisineTypes];
+                        newCuisines.splice(index, 1);
+                        setCuisineTypes(newCuisines);
+                      }}
+                    >
+                      <Icon name="times" size={14} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Mức giá</Text>
+              <View style={styles.buttonGroup}>
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    priceRange === 'low' && styles.activeButton
+                  ]}
+                  onPress={() => setPriceRange('low')}
+                >
+                  <Text style={[
+                    styles.buttonText,
+                    priceRange === 'low' && styles.activeButtonText
+                  ]}>Rẻ</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    priceRange === 'medium' && styles.activeButton
+                  ]}
+                  onPress={() => setPriceRange('medium')}
+                >
+                  <Text style={[
+                    styles.buttonText,
+                    priceRange === 'medium' && styles.activeButtonText
+                  ]}>Trung bình</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[
+                    styles.button,
+                    priceRange === 'high' && styles.activeButton
+                  ]}
+                  onPress={() => setPriceRange('high')}
+                >
+                  <Text style={[
+                    styles.buttonText,
+                    priceRange === 'high' && styles.activeButtonText
+                  ]}>Cao</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Số điện thoại (tùy chọn)</Text>
+              <TextInput
+                style={styles.input}
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+                placeholder="Ví dụ: 0912345678"
+                keyboardType="phone-pad"
+              />
+            </View>
+            
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Website (tùy chọn)</Text>
+              <TextInput
+                style={styles.input}
+                value={website}
+                onChangeText={setWebsite}
+                placeholder="Ví dụ: www.phohung.com"
+                keyboardType="url"
+              />
+            </View>
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.inputLabel}>Giờ mở cửa (tùy chọn)</Text>
+              <TextInput
+                style={styles.input}
+                value={openingHours}
+                onChangeText={setOpeningHours}
+                placeholder="Ví dụ: 7:00 - 22:00"
+              />
+            </View>
             
             <View style={styles.inputContainer}>
               <Text style={styles.inputLabel}>Điểm tốt</Text>
@@ -593,165 +696,6 @@ export default function CreatePostScreen() {
                         const newCons = [...cons];
                         newCons.splice(index, 1);
                         setCons(newCons);
-                      }}
-                    >
-                      <Icon name="times" size={14} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
-        );
-
-      case PostType.RESTAURANT:
-        return (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Chia sẻ quán ăn</Text>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Tên quán</Text>
-              <TextInput
-                style={styles.input}
-                value={restaurantName}
-                onChangeText={setRestaurantName}
-                placeholder="Ví dụ: Phở Hùng"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Loại ẩm thực</Text>
-              <View style={styles.tagInputContainer}>
-                <TextInput
-                  style={styles.tagInput}
-                  value={cuisineInput}
-                  onChangeText={setCuisineInput}
-                  placeholder="Thêm loại ẩm thực"
-                  onSubmitEditing={addCuisine}
-                />
-                <TouchableOpacity style={styles.addButton} onPress={addCuisine}>
-                  <Icon name="plus" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.tagsContainer}>
-                {cuisineTypes.map((cuisine, index) => (
-                  <View key={`cuisine-${index}`} style={styles.tag}>
-                    <Text style={styles.tagText}>{cuisine}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const newCuisines = [...cuisineTypes];
-                        newCuisines.splice(index, 1);
-                        setCuisineTypes(newCuisines);
-                      }}
-                    >
-                      <Icon name="times" size={14} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Mức giá</Text>
-              <View style={styles.buttonGroup}>
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    priceRange === 'low' && styles.activeButton
-                  ]}
-                  onPress={() => setPriceRange('low')}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    priceRange === 'low' && styles.activeButtonText
-                  ]}>Rẻ</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    priceRange === 'medium' && styles.activeButton
-                  ]}
-                  onPress={() => setPriceRange('medium')}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    priceRange === 'medium' && styles.activeButtonText
-                  ]}>Trung bình</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    priceRange === 'high' && styles.activeButton
-                  ]}
-                  onPress={() => setPriceRange('high')}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    priceRange === 'high' && styles.activeButtonText
-                  ]}>Cao</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Số điện thoại (tùy chọn)</Text>
-              <TextInput
-                style={styles.input}
-                value={phoneNumber}
-                onChangeText={setPhoneNumber}
-                placeholder="Ví dụ: 0912345678"
-                keyboardType="phone-pad"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Website (tùy chọn)</Text>
-              <TextInput
-                style={styles.input}
-                value={website}
-                onChangeText={setWebsite}
-                placeholder="Ví dụ: www.phohung.com"
-                keyboardType="url"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Giờ mở cửa</Text>
-              <TextInput
-                style={styles.input}
-                value={openingHours}
-                onChangeText={setOpeningHours}
-                placeholder="Ví dụ: 7:00 - 22:00"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Món đáng thử</Text>
-              <View style={styles.tagInputContainer}>
-                <TextInput
-                  style={styles.tagInput}
-                  value={dishInput}
-                  onChangeText={setDishInput}
-                  placeholder="Thêm món đặc trưng"
-                  onSubmitEditing={addMustTryDish}
-                />
-                <TouchableOpacity style={styles.addButton} onPress={addMustTryDish}>
-                  <Icon name="plus" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.tagsContainer}>
-                {mustTryDishes.map((dish, index) => (
-                  <View key={`dish-${index}`} style={[styles.tag, { backgroundColor: '#FF9800' }]}>
-                    <Text style={styles.tagText}>{dish}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const newDishes = [...mustTryDishes];
-                        newDishes.splice(index, 1);
-                        setMustTryDishes(newDishes);
                       }}
                     >
                       <Icon name="times" size={14} color="#fff" />
@@ -845,12 +789,6 @@ export default function CreatePostScreen() {
             icon="star"
             active={postType === PostType.REVIEW}
             onPress={() => setPostType(PostType.REVIEW)}
-          />
-          <PostTypeTab
-            title="Quán ăn"
-            icon="map-marker"
-            active={postType === PostType.RESTAURANT}
-            onPress={() => setPostType(PostType.RESTAURANT)}
           />
         </View>
 

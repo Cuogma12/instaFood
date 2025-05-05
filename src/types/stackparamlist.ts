@@ -6,6 +6,7 @@ export type RootStackParamList = {
   EditProfile: undefined;
   SettingScreen: undefined;
   Admin: undefined;
+  RecipePost: { id: string };
 };
 
 export type AdminStackParamList = {
