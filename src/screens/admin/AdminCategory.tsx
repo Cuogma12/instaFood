@@ -10,7 +10,7 @@ import Icon from 'react-native-vector-icons/FontAwesome';
 const CATEGORY_TYPES = [
   { label: 'Bình thường', value: 'normal' },
   { label: 'Công thức nấu ăn', value: 'recipe' },
-  { label: 'Đánh giá nhà hàng', value: 'review' }
+  { label: 'Đánh giá món ăn', value: 'review' }
 ];
 
 export default function AdminCategory() {
@@ -21,7 +21,6 @@ export default function AdminCategory() {
   const [modalVisible, setModalVisible] = useState(false);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [parentId, setParentId] = useState<string | undefined>(undefined);
   const [creating, setCreating] = useState(false);
   const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
   const [uploadingImage, setUploadingImage] = useState(false);
@@ -37,6 +36,19 @@ export default function AdminCategory() {
   useEffect(() => {
     fetchCategories();
   }, []);
+
+  // Tổ chức danh mục theo tên (không còn phân cấp)
+  const organizeCategories = () => {
+    // Clone mảng để không ảnh hưởng đến dữ liệu gốc
+    const allCategories = [...categories];
+    
+    // Sắp xếp danh mục theo tên
+    allCategories.sort((a, b) => {
+      return a.name.localeCompare(b.name);
+    });
+    
+    return allCategories;
+  };
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -60,7 +72,6 @@ export default function AdminCategory() {
   const resetForm = () => {
     setName('');
     setDescription('');
-    setParentId(undefined);
     setImageUrl(undefined);
     setType('');
     setEditingCategory(null);
@@ -83,6 +94,13 @@ export default function AdminCategory() {
       let result;
 
       if (editingCategory) {
+        // Kiểm tra categoryId có tồn tại trong danh sách hiện tại không
+        const found = categories.find(cat => cat.categoryId === editingCategory.categoryId);
+        if (!found) {
+          setCreating(false);
+          Alert.alert('Lỗi', 'Danh mục không tồn tại hoặc đã bị xóa. Vui lòng tải lại danh sách.');
+          return;
+        }
         result = await updateCategory(editingCategory.categoryId, {
           name: name.trim(),
           description: description.trim(),
@@ -93,7 +111,6 @@ export default function AdminCategory() {
         result = await createCategory({
           name: name.trim(),
           description: description.trim(),
-          parentId: parentId || undefined,
           imageUrl,
           type
         });
@@ -112,16 +129,16 @@ export default function AdminCategory() {
       } else {
         Alert.alert(
           'Lỗi',
-          editingCategory 
+          result.error || (editingCategory 
             ? 'Không thể cập nhật danh mục. Vui lòng thử lại.'
-            : 'Không thể tạo danh mục. Vui lòng thử lại.'
+            : 'Không thể tạo danh mục. Vui lòng thử lại.')
         );
       }
-    } catch (error) {
+    } catch (error: any) {
       setCreating(false);
       Alert.alert(
         'Lỗi',
-        'Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau.'
+        error?.message || 'Đã xảy ra lỗi không mong muốn. Vui lòng thử lại sau.'
       );
     }
   };
@@ -132,26 +149,36 @@ export default function AdminCategory() {
     setDescription(category.description);
     setType(category.type);
     setImageUrl(category.imageUrl);
-    setParentId(category.parentId);
     setModalVisible(true);
   };
 
   const handleDelete = async (category: Category) => {
     Alert.alert(
       'Xác nhận xóa',
-      'Bạn có chắc chắn muốn xóa danh mục này?',
+      `Bạn có chắc chắn muốn xóa danh mục "${category.name}"?`,
       [
         { text: 'Hủy', style: 'cancel' },
         {
           text: 'Xóa',
           style: 'destructive',
           onPress: async () => {
-            const result = await deleteCategory(category.categoryId);
-            if (result.success) {
-              fetchCategories();
-              Alert.alert('Thành công', 'Đã xóa danh mục');
-            } else {
-              Alert.alert('Lỗi', 'Không thể xóa danh mục');
+            try {
+              setLoading(true);
+              const result = await deleteCategory(category.categoryId);
+              setLoading(false);
+              
+              if (result.success) {
+                fetchCategories();
+                Alert.alert('Thành công', 'Đã xóa danh mục thành công');
+              } else {
+                Alert.alert('Không thể xóa', result.error || 'Không thể xóa danh mục này');
+              }
+            } catch (error: any) {
+              setLoading(false);
+              Alert.alert(
+                'Lỗi',
+                error?.message || 'Đã xảy ra lỗi khi xóa danh mục'
+              );
             }
           }
         }
@@ -174,11 +201,6 @@ export default function AdminCategory() {
         <Text style={styles.categoryType}>
           Loại: {CATEGORY_TYPES.find(t => t.value === item.type)?.label || item.type}
         </Text>
-        {item.parentId && (
-          <Text style={styles.categoryParent}>
-            ➔ Thuộc danh mục: {categories.find(c => c.categoryId === item.parentId)?.name || 'Không rõ'}
-          </Text>
-        )}
       </View>
       <View style={styles.categoryActions}>
         <TouchableOpacity
@@ -203,7 +225,7 @@ export default function AdminCategory() {
         <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 30 }} />
       ) : (
         <FlatList
-          data={categories}
+          data={organizeCategories()}
           keyExtractor={item => item.categoryId}
           renderItem={renderCategoryItem}
           contentContainerStyle={{ padding: 16 }}
@@ -246,6 +268,7 @@ export default function AdminCategory() {
                 onValueChange={(itemValue) => setType(itemValue)}
                 style={styles.picker}
               >
+                <Picker.Item label="Chọn loại danh mục" value="" />
                 {CATEGORY_TYPES.map(typeOption => (
                   <Picker.Item 
                     key={typeOption.value} 
@@ -255,6 +278,7 @@ export default function AdminCategory() {
                 ))}
               </Picker>
             </View>
+            
             <TouchableOpacity
               style={[styles.input, { alignItems: 'center', justifyContent: 'center', backgroundColor: '#eee' }]}
               onPress={handlePickImage}
@@ -345,11 +369,6 @@ const styles = StyleSheet.create({
   categoryDesc: {
     color: colors.darkGray,
     fontSize: 13,
-  },
-  categoryParent: {
-    color: colors.secondary,
-    fontSize: 13,
-    marginTop: 4,
   },
   categoryType: {
     color: colors.secondary,

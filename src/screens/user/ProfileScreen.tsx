@@ -9,6 +9,7 @@ import {
   Dimensions,
   FlatList,
   ActivityIndicator,
+  Modal
 } from 'react-native';
 import { colors } from '../../utils/colors';
 import Icon from 'react-native-vector-icons/FontAwesome';
@@ -18,16 +19,20 @@ import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../types/stackparamlist';
 import { UserProfile } from '../../types/user';
-import { ProfilePost } from '../../types/post';
+import { Post, ProfilePost } from '../../types/post';
 import useAuth from '../../hooks/useAuth';
 import AuthRequired from '../../components/auth/AuthRequired';
+import RecipePost from '../../components/user/RecipePost';
+import ReviewPost from '../../components/user/ReviewPost';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = width / 3;
 const ITEM_HEIGHT = 1.5*ITEM_WIDTH;
 
-type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList>;
-
+// Mở rộng kiểu ProfileScreenNavigationProp để bao gồm phương thức jumpTo
+type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList> & {
+  jumpTo?: (name: string, params?: object) => void;
+};
 
 export default function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
@@ -35,6 +40,10 @@ export default function ProfileScreen() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPost, setSelectedPost] = useState<Post | null>(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [viewMode, setViewMode] = useState<'detail' | 'feed'>('detail'); // Chế độ xem: chi tiết hoặc feed
+  const [initialScrollIndex, setInitialScrollIndex] = useState(0); // Vị trí scroll ban đầu trong FlatList
   const db = getFirestore();
 
   const fetchUserData = async () => {
@@ -66,13 +75,17 @@ export default function ProfileScreen() {
       );
       const postsSnapshot = await getDocs(postsQuery);
 
-      const userPosts = postsSnapshot.docs.map((doc) => ({
-        id: doc.id,
-        imageUrl:
-          doc.data().mediaUrls && doc.data().mediaUrls.length > 0
-            ? doc.data().mediaUrls[0]
-            : `https://picsum.photos/200/200?random=${Math.random()}`,
-      }));
+      const userPosts = postsSnapshot.docs.map((doc) => {
+        const postData = doc.data();
+        return {
+          id: doc.id,
+          ...postData,
+          imageUrl: 
+            postData.mediaUrls && postData.mediaUrls.length > 0
+              ? postData.mediaUrls[0]
+              : `https://picsum.photos/200/200?random=${Math.random()}`,
+        };
+      });
 
       setPosts(userPosts);
       setLoading(false);
@@ -82,7 +95,6 @@ export default function ProfileScreen() {
     }
   };
   
-  // dùng useFocusEffect để lấy dữ liệu
   useFocusEffect(
     React.useCallback(() => {
       fetchUserData();
@@ -98,19 +110,11 @@ export default function ProfileScreen() {
     }
   }, [user]);
 
-  // Hàm điều hướng đến tab CreatePost
   const navigateToCreatePost = () => {
-    // Sử dụng jumpTo thay vì navigate để chuyển tab
-    // @ts-ignore - Bỏ qua lỗi TypeScript vì navigation có thể là từ stack hoặc tab
-    if (navigation.jumpTo) {
-      // @ts-ignore
-      navigation.jumpTo('CreatePost');
-    } else {
-      // Fallback nếu là stack navigator
-      navigation.navigate('MainApp', { screen: 'CreatePost' });
-    }
+    navigation.navigate('MainApp', { screen: 'CreatePost' });
   };
-const renderHeader = () => (
+
+  const renderHeader = () => (
     <View style={styles.header}>
       <Text style={styles.headerTitle}>{userProfile?.username || 'Trang cá nhân'}</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -175,16 +179,21 @@ const renderHeader = () => (
         <Icon name="th" size={22} color={colors.text} />
       </TouchableOpacity>
       <TouchableOpacity style={styles.tabItem}>
-        <Icon name="film" size={22} color={colors.darkGray} />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.tabItem}>
         <Icon name="bookmark" size={22} color={colors.darkGray} />
       </TouchableOpacity>
     </View>
   );
 
-  const renderPostItem = ({ item }: { item: ProfilePost }) => (
-    <TouchableOpacity style={styles.postItem}>
+  const renderPostItem = ({ item, index }: { item: ProfilePost; index: number }) => (
+    <TouchableOpacity 
+      style={styles.postItem}
+      onPress={() => {
+        setSelectedPost(item as unknown as Post);
+        setInitialScrollIndex(index); // Lưu vị trí của bài đăng được nhấn
+        setViewMode('detail'); // Bắt đầu ở chế độ chi tiết
+        setModalVisible(true);
+      }}
+    >
       <Image
         source={{ uri: item.imageUrl }}
         style={styles.postImage}
@@ -192,6 +201,59 @@ const renderHeader = () => (
       />
     </TouchableOpacity>
   );
+
+  const renderModalPostItem = ({ item }: { item: Post }) => {
+    return (
+      <View style={styles.modalPostItem}>
+        {/* Header của post */}
+        <View style={styles.modalPostHeader}>
+          <Image 
+            source={userProfile?.avatar ? { uri: userProfile.avatar } : require('../../assets/images/defaultuser.png')}
+            style={styles.modalPostAvatar}
+          />
+          <Text style={styles.modalPostUsername}>{userProfile?.username}</Text>
+        </View>
+
+        {/* Ảnh bài đăng */}
+        {item.mediaUrls && item.mediaUrls.length > 0 && (
+          <Image 
+            source={{ uri: item.mediaUrls[0] }} 
+            style={styles.modalPostImage}
+            resizeMode="cover"
+          />
+        )}
+
+        {/* Caption */}
+        <View style={styles.modalPostCaption}>
+          <Text style={styles.modalPostText}>{item.caption}</Text>
+        </View>
+
+        {/* Nút tương tác */}
+        <View style={styles.modalPostActions}>
+          <TouchableOpacity style={styles.modalPostAction}>
+            <Icon name="heart-o" size={20} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.modalPostAction}>
+            <Icon name="comment-o" size={20} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.modalPostAction}>
+            <Icon name="share" size={20} color={colors.text} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Nút xem chi tiết */}
+        <TouchableOpacity 
+          style={styles.viewDetailButton}
+          onPress={() => {
+            setSelectedPost(item);
+            setViewMode('detail');
+          }}
+        >
+          <Text style={styles.viewDetailText}>Xem chi tiết</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   const renderPosts = () => {
     if (loading) {
@@ -243,6 +305,155 @@ const renderHeader = () => (
           {renderTabs()}
           <View style={styles.content}>{renderPosts()}</View>
         </ScrollView>
+
+        {/* Modal chi tiết bài đăng */}
+        <Modal
+          visible={modalVisible}
+          transparent={false}
+          animationType="slide"
+          onRequestClose={() => setModalVisible(false)}
+        >
+          <SafeAreaView style={styles.modalFullContainer}>
+            <View style={styles.modalContent}>
+              {/* Header modal */}
+              <View style={styles.modalHeader}>
+                <View style={styles.modalUser}>
+                  <Image 
+                    source={userProfile?.avatar ? { uri: userProfile.avatar } : require('../../assets/images/defaultuser.png')}
+                    style={styles.modalAvatar}
+                  />
+                  <Text style={styles.modalUsername}>{userProfile?.username}</Text>
+                </View>
+                <View style={styles.modalHeaderActions}>
+                  {/* Nút chuyển chế độ xem */}
+                  <TouchableOpacity 
+                    style={[
+                      styles.viewModeButton, 
+                      viewMode === 'feed' ? styles.activeViewModeButton : null
+                    ]}
+                    onPress={() => setViewMode('feed')}
+                  >
+                    <Icon name="list" size={18} color={viewMode === 'feed' ? colors.primary : colors.text} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[
+                      styles.viewModeButton, 
+                      viewMode === 'detail' ? styles.activeViewModeButton : null
+                    ]}
+                    onPress={() => setViewMode('detail')}
+                  >
+                    <Icon name="info-circle" size={18} color={viewMode === 'detail' ? colors.primary : colors.text} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={styles.closeButton} 
+                    onPress={() => setModalVisible(false)}
+                  >
+                    <Icon name="close" size={24} color={colors.text} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Body modal - Chi tiết bài đăng */}
+              {viewMode === 'detail' && selectedPost && (
+                <ScrollView style={styles.modalBody}>
+                  {/* Carousel ảnh */}
+                  {selectedPost.mediaUrls && selectedPost.mediaUrls.length > 0 && (
+                    <ScrollView 
+                      horizontal 
+                      pagingEnabled
+                      showsHorizontalScrollIndicator={false}
+                      style={styles.imageCarousel}
+                    >
+                      {selectedPost.mediaUrls.map((url, index) => (
+                        <Image 
+                          key={`media-${index}`} 
+                          source={{ uri: url }}
+                          style={styles.carouselImage}
+                          resizeMode="cover"
+                        />
+                      ))}
+                    </ScrollView>
+                  )}
+
+                  {/* Các nút tương tác */}
+                  <View style={styles.interactionButtons}>
+                    <TouchableOpacity style={styles.interactionButton}>
+                      <Icon name="heart-o" size={24} color={colors.text} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.interactionButton}>
+                      <Icon name="comment-o" size={24} color={colors.text} />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={styles.interactionButton}>
+                      <Icon name="share" size={24} color={colors.text} />
+                    </TouchableOpacity>
+                  </View>
+
+                  {/* Nội dung bài đăng */}
+                  <View style={styles.postContent}>
+                    {/* Hiển thị nội dung theo loại bài đăng */}
+                    {selectedPost.postType === 'normal' && (
+                      <Text style={styles.caption}>{selectedPost.caption}</Text>
+                    )}
+
+                    {selectedPost.postType === 'recipe' && selectedPost.recipeDetails && (
+                      <RecipePost 
+                        recipeDetails={{
+                          recipeName: selectedPost.recipeDetails.title || 'Công thức món ăn',
+                          ingredients: selectedPost.recipeDetails.ingredients || [],
+                          instructions: selectedPost.recipeDetails.instructions || []
+                        }} 
+                        caption={selectedPost.caption}
+                      />
+                    )}
+
+                    {selectedPost.postType === 'review' && selectedPost.reviewDetails && (
+                      <ReviewPost 
+                        reviewDetails={selectedPost.reviewDetails} 
+                        caption={selectedPost.caption}
+                        location={selectedPost.location}
+                      />
+                    )}
+
+                    {/* Hashtags */}
+                    {selectedPost.hashtags && selectedPost.hashtags.length > 0 && (
+                      <View style={styles.hashtagsContainer}>
+                        {selectedPost.hashtags.map((tag, index) => (
+                          <Text key={`tag-${index}`} style={styles.hashtag}>#{tag}</Text>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Thời gian đăng */}
+                    {selectedPost.createdAt && (
+                      <Text style={styles.timestamp}>
+                        {typeof selectedPost.createdAt === 'object' && selectedPost.createdAt.toDate
+                          ? selectedPost.createdAt.toDate().toLocaleDateString()
+                          : new Date(selectedPost.createdAt).toLocaleDateString()}
+                      </Text>
+                    )}
+                  </View>
+                </ScrollView>
+              )}
+
+              {/* Body modal - Danh sách bài đăng */}
+              {viewMode === 'feed' && (
+                <FlatList
+                  data={posts}
+                  renderItem={renderModalPostItem}
+                  keyExtractor={(item) => item.id}
+                  initialScrollIndex={initialScrollIndex}
+                  getItemLayout={(data, index) => ({
+                    length: 350, // Chiều cao ước tính của mỗi mục
+                    offset: 350 * index,
+                    index,
+                  })}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={styles.feedContainer}
+                />
+              )}
+            </View>
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     </AuthRequired>
   );
@@ -413,5 +624,170 @@ const styles = StyleSheet.create({
   emptyButtonText: {
     color: '#fff',
     fontWeight: '500',
+  },
+  modalFullContainer: {
+    flex: 1,
+    backgroundColor: colors.background,
+  },
+  modalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    flex: 1,
+    width: '100%',
+    backgroundColor: colors.background,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.lightGray,
+    backgroundColor: colors.primary,
+  },
+  modalUser: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  modalUsername: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  modalHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  viewModeButton: {
+    padding: 8,
+    marginHorizontal: 5,
+    borderRadius: 5,
+  },
+  activeViewModeButton: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  closeButton: {
+    padding: 8,
+    marginLeft: 5,
+  },
+  modalBody: {
+    padding: 10,
+    flex: 1,
+  },
+  imageCarousel: {
+    marginBottom: 10,
+  },
+  carouselImage: {
+    width: Dimensions.get('window').width * 0.9,
+    height: width * 0.9,
+    borderRadius: 10,
+  },
+  interactionButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginVertical: 10,
+  },
+  interactionButton: {
+    padding: 10,
+  },
+  postContent: {
+    marginTop: 10,
+  },
+  caption: {
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 10,
+  },
+  hashtagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10,
+  },
+  hashtag: {
+    fontSize: 12,
+    color: colors.primary,
+    marginRight: 5,
+  },
+  timestamp: {
+    fontSize: 12,
+    color: colors.darkGray,
+    marginTop: 10,
+  },
+  modalPostItem: {
+    marginVertical: 10,
+    marginHorizontal: 15,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  modalPostHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.lightGray,
+  },
+  modalPostAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10,
+  },
+  modalPostUsername: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+  },
+  modalPostImage: {
+    width: '100%',
+    height: width * 0.6,
+  },
+  modalPostCaption: {
+    padding: 15,
+  },
+  modalPostText: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  modalPostActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.lightGray,
+  },
+  modalPostAction: {
+    padding: 10,
+  },
+  viewDetailButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: 5,
+    marginHorizontal: 15,
+    marginVertical: 15,
+  },
+  viewDetailText: {
+    color: '#fff',
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  feedContainer: {
+    paddingVertical: 10,
   },
 });
