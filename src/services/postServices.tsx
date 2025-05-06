@@ -9,7 +9,8 @@ import {
   serverTimestamp,
   query,
   orderBy,
-  getDocs
+  getDocs,
+  deleteDoc
 } from '@react-native-firebase/firestore';
 import { getAuth } from '@react-native-firebase/auth';
 import { CreatePostData, PostType, BasePost } from '../types/post';
@@ -86,7 +87,6 @@ export const createPost = async (
       location: postData.location || '',
       ...(postData.recipeDetails && { recipeDetails: postData.recipeDetails }),
       ...(postData.reviewDetails && { reviewDetails: postData.reviewDetails }),
-      ...(postData.restaurantDetails && { restaurantDetails: postData.restaurantDetails }),
     };
 
     const postsCollection = collection(db, 'Posts');
@@ -114,5 +114,59 @@ export const getPosts = async () => {
   } catch (error) {
     console.error('Error fetching posts:', error);
     return [];
+  }
+};
+
+// Lấy tất cả bài đăng (cho admin)
+export const getAllPosts = async () => {
+  try {
+    const postsRef = collection(db, 'Posts');
+    const snapshot = await getDocs(postsRef);
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error('Error getting all posts:', error);
+    throw error;
+  }
+};
+
+// Xóa bài đăng
+export const deletePost = async (postId: string) => {
+  try {
+    const postRef = doc(db, 'Posts', postId);
+    const postDoc = await getDoc(postRef);
+    
+    if (!postDoc.exists) {
+      throw new Error('Bài đăng không tồn tại');
+    }
+
+    const postData = postDoc.data();
+    const userRef = doc(db, 'Users', postData.userId);
+
+    await deleteDoc(postRef);
+    await updateDoc(userRef, {
+      posts: increment(-1)
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting post:', error);
+    throw error;
+  }
+};
+
+// Ẩn/hiện bài đăng
+export const togglePostVisibility = async (postId: string, isHidden: boolean) => {
+  try {
+    const postRef = doc(db, 'Posts', postId);
+    await updateDoc(postRef, {
+      isHidden: isHidden
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error toggling post visibility:', error);
+    throw error;
   }
 };

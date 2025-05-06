@@ -100,3 +100,19 @@ export interface ProfilePost {
   id: string;
   imageUrl: string;
 }
+
+export interface AdminPost {
+  id: string;
+  caption: string;
+  username: string;
+  mediaUrls: string[];
+  postType: PostType;
+  createdAt: any;
+  isHidden?: boolean;
+  recipeDetails?: {
+    title: string;
+  };
+  reviewDetails?: {
+    name: string;
+  };
+}

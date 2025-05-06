@@ -28,6 +28,7 @@ const ITEM_HEIGHT = 1.5*ITEM_WIDTH;
 
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
+
 export default function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const { isAuthenticated, authChecked, user } = useAuth();
@@ -257,7 +258,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.primary,
     paddingHorizontal: 15,
-    height: 56,
+    height: 65,
     justifyContent: 'space-between',
     shadowOpacity: 0.2,
     shadowRadius: 3,

@@ -6,12 +6,14 @@ interface AuthContextProps {
   user: any;
   role: 'user' | 'admin' | null;
   loading: boolean;
+  handleSignOut: () => Promise<void>;
 }
 
 export const AuthContext = createContext<AuthContextProps>({
   user: null,
   role: null,
   loading: true,
+  handleSignOut: async () => {},
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -19,11 +21,22 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [role, setRole] = useState<'user' | 'admin' | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const handleSignOut = async () => {
+    try {
+      const auth = getAuth();
+      await signOut(auth);
+      setUser(null);
+      setRole(null);
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
+  };
 
+  useEffect(() => {
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-
+      setLoading(true);
+      
       if (firebaseUser) {
         try {
           const db = getFirestore();
@@ -31,15 +44,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           const userData = userDoc.data();
 
           if (userData) {
-            setUser(firebaseUser);
+            setUser({
+              ...firebaseUser,
+              ...userData
+            });
             setRole(userData.role || 'user');
           } else {
-            setUser(null);
-            setRole(null);
+            await handleSignOut();
           }
         } catch (error) {
-          setUser(null);
-          setRole(null);
+          console.error('Error fetching user data:', error);
+          await handleSignOut();
         }
       } else {
         setUser(null);
@@ -52,10 +67,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => unsubscribe();
   }, []);
 
-
-
   return (
-    <AuthContext.Provider value={{ user, role, loading}}>
+    <AuthContext.Provider value={{ user, role, loading, handleSignOut }}>
       {children}
     </AuthContext.Provider>
   );
