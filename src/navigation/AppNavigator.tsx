@@ -16,8 +16,8 @@ import ProfileScreen from '../screens/user/ProfileScreen';
 import RenderHeader from '../screens/user/ProfileScreen';
 import EditProfile from '../screens/user/EditProfile';
 import SettingScreen from '../screens/user/SettingScreen';
-import { RootStackParamList } from '../types/stackparamlist'
-
+import AdminNavigator from './AdminNavigator';
+import { RootStackParamList } from '../types/stackparamlist';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
@@ -117,6 +117,7 @@ export default function AppNavigator() {
       <Stack.Screen name="MainApp" component={MainApp} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="Admin" component={AdminNavigator} />
       <Stack.Screen
         name="EditProfile"
         component={EditProfile}
