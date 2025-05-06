@@ -143,6 +143,9 @@ export const deletePost = async (postId: string) => {
     }
 
     const postData = postDoc.data();
+    if (!postData) {
+      throw new Error('postData is undefined');
+    }
     const userRef = doc(db, 'Users', postData.userId);
 
     await deleteDoc(postRef);

@@ -227,7 +227,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   hashtag: {
-    color: colors.primary,
+    color: colors.hashtag,
     fontSize: 14,
     marginBottom: 8,
     marginHorizontal: 16,

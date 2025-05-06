@@ -10,6 +10,7 @@ import {
   updateDoc,
   deleteDoc
 } from '@react-native-firebase/firestore';
+import { Picker } from '@react-native-picker/picker';
 
 const db = getFirestore();
 
@@ -19,7 +20,6 @@ export interface Category {
   type: string;
   description: string;
   imageUrl?: string;
-  parentId?: string;
   createdAt: Date;
 }
 
@@ -81,9 +81,9 @@ export const createCategory = async (categoryData: {
   name: string;
   description: string;
   imageUrl?: string;
-  parentId?: string;
+    parentId?: string;
   type: string;
-}): Promise<{ success: boolean; categoryId?: string }> => {
+}): Promise<{ success: boolean; categoryId?: string; error?: string }> => {
   try {
     const newCategory = {
       ...categoryData,
@@ -95,11 +95,12 @@ export const createCategory = async (categoryData: {
     
     return {
       success: true,
-      categoryId: docRef.id
+      categoryId: docRef.id,
+      error: undefined
     };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error creating category:', error);
-    return { success: false };
+    return { success: false, error: error?.message || 'Lỗi khi tạo danh mục' };
   }
 };
 
@@ -112,17 +113,17 @@ export const updateCategory = async (
     imageUrl?: string;
     type?: string;
   }
-): Promise<{ success: boolean }> => {
+): Promise<{ success: boolean; error?: string }> => {
   try {
     const categoryRef = doc(db, 'Categories', categoryId);
     await updateDoc(categoryRef, {
       ...updateData,
       updatedAt: serverTimestamp()
     });
-    return { success: true };
-  } catch (error) {
+    return { success: true, error: undefined };
+  } catch (error: any) {
     console.error('Error updating category:', error);
-    return { success: false };
+    return { success: false, error: error?.message || 'Lỗi khi cập nhật danh mục' };
   }
 };
 

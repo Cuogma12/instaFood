@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { colors } from '../../utils/colors';
 
@@ -11,56 +11,52 @@ interface RecipePostProps {
   caption?: string;
 }
 
-const CAPTION_LIMIT = 150;
+const MAX_LINES = 6;
 
 const RecipePost: React.FC<RecipePostProps> = ({ recipeDetails, caption }) => {
-  const [showFullContent, setShowFullContent] = useState(false);
+  const [showFull, setShowFull] = useState(false);
 
-  const renderContent = () => {
-    const mainContent = caption ? caption + '\n\n' : '';
-    
-    const ingredientsText = recipeDetails.ingredients.map(ing => `• ${ing}`).join('\n');
-    const instructionsText = recipeDetails.instructions.map((inst, idx) => `${idx + 1}. ${inst}`).join('\n');
-    
-    const combined = mainContent + ingredientsText + '\n\n' + instructionsText;
-    const shouldTruncate = combined.length > CAPTION_LIMIT;
-    
-    const displayedContent = shouldTruncate && !showFullContent
-      ? combined.slice(0, CAPTION_LIMIT) + '...'
-      : combined;
+  const ingredients = recipeDetails.ingredients.map(ing => `• ${ing}`);
+  const instructions = recipeDetails.instructions.map((inst, idx) => `${idx + 1}. ${inst}`);
 
-    return (
-      <View>
-        {caption && <Text style={styles.caption}>{caption}</Text>}
-        
-        <Text style={styles.sectionTitle}>📝 Nguyên liệu:</Text>
-        <Text style={styles.content}>
-          {recipeDetails.ingredients.map(ing => `• ${ing}`).join('\n')}
-        </Text>
-        
-        <Text style={styles.sectionTitle}>🥘 Cách nấu:</Text>
-        <Text style={styles.content}>
-          {recipeDetails.instructions.map((inst, idx) => `${idx + 1}. ${inst}`).join('\n')}
-        </Text>
+  const combinedLines = [...ingredients, ...instructions];
+  const shouldTruncate = combinedLines.length > MAX_LINES;
 
-        {shouldTruncate && (
-          <TouchableOpacity 
-            onPress={() => setShowFullContent(!showFullContent)}
-            style={styles.readMoreButton}
-          >
-            <Text style={styles.readMoreText}>
-              {showFullContent ? 'Thu gọn' : 'Xem thêm'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
+  const displayedIngredients = showFull
+    ? ingredients
+    : ingredients.slice(0, Math.max(0, MAX_LINES));
+
+  const displayedInstructions = showFull
+    ? instructions
+    : ingredients.length >= MAX_LINES
+      ? []
+      : instructions.slice(0, MAX_LINES - ingredients.length);
 
   return (
     <View style={styles.container}>
       <Text style={styles.recipeName}>🍳 {recipeDetails.recipeName}</Text>
-      {renderContent()}
+      {caption ? <Text style={styles.caption}>{caption}</Text> : null}
+
+      <Text style={styles.sectionTitle}>🧂 Nguyên liệu:</Text>
+      <Text style={styles.content}>
+        {displayedIngredients.join('\n') || ''}
+      </Text>
+
+      <Text style={styles.sectionTitle}>🍲 Cách nấu:</Text>
+      <Text style={styles.content}>
+        {displayedInstructions.join('\n') || ''}
+      </Text>
+
+      {shouldTruncate && (
+        <TouchableOpacity
+          onPress={() => setShowFull(!showFull)}
+          style={styles.readMoreButton}
+        >
+          <Text style={styles.readMoreText}>
+            {showFull ? 'Thu gọn' : 'Xem thêm'}
+          </Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 };
@@ -87,7 +83,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 12,
+    marginTop: 10,
     marginBottom: 8,
   },
   content: {
