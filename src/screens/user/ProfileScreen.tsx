@@ -184,7 +184,10 @@ const renderHeader = () => (
   );
 
   const renderPostItem = ({ item }: { item: ProfilePost }) => (
-    <TouchableOpacity style={styles.postItem}>
+    <TouchableOpacity
+  style={styles.postItem}
+  onPress={() => navigation.navigate('PostDetail', { postId: item.id })}
+>
       <Image
         source={{ uri: item.imageUrl }}
         style={styles.postImage}

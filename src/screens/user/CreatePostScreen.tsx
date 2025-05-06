@@ -278,10 +278,10 @@ export default function CreatePostScreen() {
               cuisineType: cuisineTypes,
               priceRange,
               contactInfo: {
-                phone: phoneNumber || undefined,
-                website: website || undefined,
+                phone: phoneNumber || '',
+                website: website || '',
               },
-              openingHours: openingHours || undefined,
+              openingHours: openingHours || '',
             }
           };
           break;

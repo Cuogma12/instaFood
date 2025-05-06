@@ -9,20 +9,16 @@ import {
     Platform,
     ActivityIndicator,
     Image,
-    Alert,
     ImageBackground,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import Icon from 'react-native-vector-icons/FontAwesome';  // Hoặc các bộ icon khác như Ionicons, MaterialIcons
-
+import Icon from 'react-native-vector-icons/FontAwesome';
 import { useNavigation } from '@react-navigation/native';
 import { AuthInput } from '../../components/auth/AuthInput';
 import { colors } from '../../utils/colors';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { login } from '../../services/authServices';
 import { RootStackParamList } from '../../types/stackparamlist';
-import { AdminStackParamList } from '../../types/stackparamlist'
-import HomeScreen from '../user/HomeScreen';
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -37,7 +33,6 @@ export default function LoginScreen() {
     const validateForm = () => {
         let isValid = true;
 
-        // Validate email
         if (!email.trim()) {
             setEmailError('Vui lòng nhập email');
             isValid = false;
@@ -48,7 +43,6 @@ export default function LoginScreen() {
             setEmailError('');
         }
 
-        // Validate password
         if (!password) {
             setPasswordError('Vui lòng nhập mật khẩu');
             isValid = false;
@@ -63,45 +57,39 @@ export default function LoginScreen() {
         setEmailError('');
         setPasswordError('');
 
-        if (!validateForm()) {
-            return;
-        }
+        if (!validateForm()) return;
 
         setLoading(true);
-    try {
-  const result = await login(email, password);
+        try {
+            const result = await login(email, password);
 
-  if (!result.success) {
-    const errorMessage = result.message || 'Đăng nhập thất bại';
-    if (errorMessage.toLowerCase().includes('email')) {
-      setEmailError(errorMessage);
-    } else if (errorMessage.toLowerCase().includes('mật khẩu') || errorMessage.toLowerCase().includes('password')) {
-      setPasswordError(errorMessage);
-    } else {
-      // Các lỗi khác chung chung
-      setEmailError(errorMessage);
-    }
-    return;
-  }
+            if (!result.success) {
+                const errorMessage = result.message || 'Đăng nhập thất bại';
+                if (errorMessage.toLowerCase().includes('email')) {
+                    setEmailError(errorMessage);
+                } else if (errorMessage.toLowerCase().includes('mật khẩu') || errorMessage.toLowerCase().includes('password')) {
+                    setPasswordError(errorMessage);
+                } else {
+                    setEmailError(errorMessage);
+                }
+                return;
+            }
 
-  // ✅ Nếu login thành công
-  if (result.user?.role === 'admin') {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Admin' }],
-    });
-  } else {
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'MainApp' }],
-    });
-  }
-  
-} catch (error: any) {
-  console.error('Login error:', error.message);
-  setEmailError('Đã xảy ra lỗi, vui lòng thử lại.');
-}
- {
+            if (result.user?.role === 'admin') {
+                navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'Admin' }],
+                });
+            } else {
+                navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'MainApp' }],
+                });
+            }
+        } catch (error: any) {
+            console.error('Login error:', error.message);
+            setEmailError('Đã xảy ra lỗi, vui lòng thử lại.');
+        } finally {
             setLoading(false);
         }
     };
@@ -136,16 +124,15 @@ export default function LoginScreen() {
                                 error={emailError}
                                 keyboardType="email-address"
                                 autoCapitalize="none"
-                                leftIcon={<Icon name='envelope' size={20} color={colors.darkGray} />}
+                                leftIcon={<Icon name="envelope" size={20} color={colors.darkGray} />}
                             />
-
                             <AuthInput
                                 placeholder="Mật khẩu"
                                 value={password}
                                 onChangeText={setPassword}
                                 error={passwordError}
                                 secureTextEntry
-                                leftIcon={<Icon name='lock' size={20} color={colors.darkGray} />}
+                                leftIcon={<Icon name="lock" size={20} color={colors.darkGray} />}
                             />
 
                             <TouchableOpacity
@@ -160,8 +147,6 @@ export default function LoginScreen() {
                                 )}
                             </TouchableOpacity>
 
-                            {/* <Text style={styles.orText}>or</Text> */}
-
                             <TouchableOpacity
                                 style={styles.registerLink}
                                 onPress={() => navigation.navigate('Register')}
@@ -171,7 +156,7 @@ export default function LoginScreen() {
                                 </Text>
                             </TouchableOpacity>
 
-                            <Text style={styles.orText}>or</Text>
+                            <Text style={styles.orText}>hoặc</Text>
 
                             <TouchableOpacity
                                 style={styles.registerLink}
@@ -197,7 +182,7 @@ const styles = StyleSheet.create({
     },
     container: {
         flex: 1,
-        backgroundColor: 'rgba(255, 255, 255, 0.9)', // Semi-transparent white
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
     },
     scrollView: {
         flexGrow: 1,
@@ -211,12 +196,6 @@ const styles = StyleSheet.create({
     logo: {
         width: 150,
         height: 150,
-    },
-    logoText: {
-        fontSize: 16,
-        color: colors.text,
-        marginTop: 10,
-        fontWeight: 'bold',
     },
     title: {
         fontSize: 24,

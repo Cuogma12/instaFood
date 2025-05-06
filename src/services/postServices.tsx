@@ -157,6 +157,21 @@ export const deletePost = async (postId: string) => {
   }
 };
 
+export const getPostById = async (postId: string) => {
+  try {
+    const postRef = doc(db, 'Posts', postId);
+    const postDoc = await getDoc(postRef);
+    
+    if (!postDoc.exists) {
+      throw new Error('Bài đăng không tồn tại');
+    }
+
+    return { id: postDoc.id, ...postDoc.data() };
+  } catch (error) {
+    console.error('Error fetching post by ID:', error);
+    throw error;
+  }
+};
 // Ẩn/hiện bài đăng
 export const togglePostVisibility = async (postId: string, isHidden: boolean) => {
   try {
