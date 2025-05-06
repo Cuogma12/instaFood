@@ -6,7 +6,9 @@ import {
   addDoc,
   query,
   where,
-  serverTimestamp
+  serverTimestamp,
+  updateDoc,
+  deleteDoc
 } from '@react-native-firebase/firestore';
 
 const db = getFirestore();
@@ -98,5 +100,63 @@ export const createCategory = async (categoryData: {
   } catch (error) {
     console.error('Error creating category:', error);
     return { success: false };
+  }
+};
+
+// Cập nhật thông tin category
+export const updateCategory = async (
+  categoryId: string,
+  updateData: {
+    name?: string;
+    description?: string;
+    imageUrl?: string;
+    type?: string;
+  }
+): Promise<{ success: boolean }> => {
+  try {
+    const categoryRef = doc(db, 'Categories', categoryId);
+    await updateDoc(categoryRef, {
+      ...updateData,
+      updatedAt: serverTimestamp()
+    });
+    return { success: true };
+  } catch (error) {
+    console.error('Error updating category:', error);
+    return { success: false };
+  }
+};
+
+// Xóa category
+export const deleteCategory = async (categoryId: string): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const categoryRef = doc(db, 'Categories', categoryId);
+    
+    // Kiểm tra xem có danh mục con không
+    const subCategoriesQuery = query(collection(db, 'Categories'), where('parentId', '==', categoryId));
+    const subCategoriesSnapshot = await getDocs(subCategoriesQuery);
+    
+    if (!subCategoriesSnapshot.empty) {
+      return { 
+        success: false, 
+        error: 'Không thể xóa danh mục này vì có danh mục con' 
+      };
+    }
+    
+    // Kiểm tra xem có bài đăng nào thuộc danh mục này không
+    const postsQuery = query(collection(db, 'Posts'), where('categoryIds', 'array-contains', categoryId));
+    const postsSnapshot = await getDocs(postsQuery);
+    
+    if (!postsSnapshot.empty) {
+      return { 
+        success: false, 
+        error: 'Không thể xóa danh mục này vì có bài đăng thuộc danh mục' 
+      };
+    }
+    
+    await deleteDoc(categoryRef);
+    return { success: true };
+  } catch (error) {
+    console.error('Error deleting category:', error);
+    return { success: false, error: 'Lỗi khi xóa danh mục' };
   }
 };
