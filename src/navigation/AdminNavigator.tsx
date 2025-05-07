@@ -62,7 +62,7 @@ function Admin() {
         }}
       />
       <Tab.Screen
-       
+
         name="Statistics"
         component={AdminStatistics}
         options={{

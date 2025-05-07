@@ -207,10 +207,19 @@ export const toggleFavoritePost = async (postId: string, isFavorite: boolean) =>
             // Import theo yêu cầu để tránh circular dependency
             const { createNotification } = require('./notificationServices');
             
+            // Lấy thông tin người dùng hiện tại để thêm vào thông báo
+            const userRef = doc(getFirestore(), 'Users', user.uid);
+            const userDoc = await getDoc(userRef);
+            const userData = userDoc.data();
+            
+            console.log('Creating favorite notification from', user.uid, 'to', postData.userId, 'for post', postId);
+            
             await createNotification({
               type: 'favorite',
               senderId: user.uid,
-              receiverId: postData?.userId,
+              senderUsername: userData?.username || 'Người dùng',
+              senderAvatar: userData?.photoURL || null,
+              receiverId: postData.userId,
               postId: postId
             });
           }
@@ -330,13 +339,21 @@ export const toggleLikePost = async (postId: string) => {
       
       // Tạo thông báo khi người dùng thích bài viết (chỉ khi thêm like, không tạo khi bỏ like)
       try {
-        // Import theo yêu cầu để tránh circular dependency
         const { createNotification } = require('./notificationServices');
         
         if (postData?.userId && postData?.userId !== user.uid) {
+          // Lấy thông tin người dùng hiện tại để thêm vào thông báo
+          const userRef = doc(getFirestore(), 'Users', user.uid);
+          const userDoc = await getDoc(userRef);
+          const userData = userDoc.data();
+          
+          console.log('Creating like notification from', user.uid, 'to', postData.userId, 'for post', postId);
+          
           await createNotification({
             type: 'like',
             senderId: user.uid,
+            senderUsername: userData?.username || 'Người dùng',
+            senderAvatar: userData?.photoURL || null,
             receiverId: postData.userId,
             postId: postId
           });

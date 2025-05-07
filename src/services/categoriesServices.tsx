@@ -10,7 +10,6 @@ import {
   updateDoc,
   deleteDoc
 } from '@react-native-firebase/firestore';
-import { Picker } from '@react-native-picker/picker';
 
 const db = getFirestore();
 

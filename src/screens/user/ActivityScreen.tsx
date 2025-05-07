@@ -178,7 +178,6 @@ export default function ActivityScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Hoạt động</Text>
         {notifications.length > 0 && (
           <TouchableOpacity
             style={styles.markReadButton}

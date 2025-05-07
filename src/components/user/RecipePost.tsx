@@ -16,37 +16,22 @@ const MAX_LINES = 6;
 const RecipePost: React.FC<RecipePostProps> = ({ recipeDetails, caption }) => {
   const [showFull, setShowFull] = useState(false);
 
-  const ingredients = recipeDetails.ingredients.map(ing => `• ${ing}`);
-  const instructions = recipeDetails.instructions.map((inst, idx) => `${idx + 1}. ${inst}`);
-
-  const combinedLines = [...ingredients, ...instructions];
-  const shouldTruncate = combinedLines.length > MAX_LINES;
-
-  const displayedIngredients = showFull
-    ? ingredients
-    : ingredients.slice(0, Math.max(0, MAX_LINES));
-
-  const displayedInstructions = showFull
-    ? instructions
-    : ingredients.length >= MAX_LINES
-      ? []
-      : instructions.slice(0, MAX_LINES - ingredients.length);
+  // Gộp nguyên liệu và hướng dẫn thành 1 mảng dòng
+  const contentLines = [
+    ...recipeDetails.ingredients.map(ing => `• ${ing}`),
+    ...recipeDetails.instructions.map((inst, idx) => `${idx + 1}. ${inst}`)
+  ];
+  const shouldTruncate = contentLines.length > MAX_LINES;
+  const displayedLines = showFull ? contentLines : contentLines.slice(0, MAX_LINES);
 
   return (
     <View style={styles.container}>
       <Text style={styles.recipeName}>🍳 {recipeDetails.recipeName}</Text>
       {caption ? <Text style={styles.caption}>{caption}</Text> : null}
-
-      <Text style={styles.sectionTitle}>🧂 Nguyên liệu:</Text>
+      <Text style={styles.sectionTitle}>📝 Nguyên liệu & Cách nấu:</Text>
       <Text style={styles.content}>
-        {displayedIngredients.join('\n') || ''}
+        {displayedLines.join('\n')}
       </Text>
-
-      <Text style={styles.sectionTitle}>🍲 Cách nấu:</Text>
-      <Text style={styles.content}>
-        {displayedInstructions.join('\n') || ''}
-      </Text>
-
       {shouldTruncate && (
         <TouchableOpacity
           onPress={() => setShowFull(!showFull)}
@@ -83,7 +68,7 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 10,
+    marginTop: 12,
     marginBottom: 8,
   },
   content: {
