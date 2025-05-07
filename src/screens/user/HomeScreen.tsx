@@ -146,8 +146,20 @@ export function PostItem({ post, userId, onToggleLike  }: PostItemProps) {
 export default function HomeScreen() {
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false); // Thêm state cho refresh
+  const [refreshing, setRefreshing] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null); // ✅ thêm state
 
+  useEffect(() => {
+    const unsubscribe = getAuth().onAuthStateChanged((user) => {
+      if (user) {
+        setUserId(user.uid);
+      } else {
+        setUserId(null);
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   const handleToggleLike = async (postId: string, hasLiked: boolean) => {
     try {
@@ -229,14 +241,20 @@ export default function HomeScreen() {
 const addLikeToActivity = async (userId: string, postId: string) => {
   try {
     const activityRef = doc(db, 'UserActivities', userId);
+    
+    // This is the proper way to check if a document exists in React Native Firebase
     const activityDoc = await activityRef.get();
 
     if (activityDoc.exists) {
-      await activityRef.update({
+      // Document exists, update it
+      await updateDoc(activityRef, {
         likedPosts: arrayUnion(postId),
       });
     } else {
-      await activityRef.set({
+      // Document doesn't exist, create it
+      // Note: For creating a new document, we need to use setDoc instead of set directly on the reference
+      const { setDoc } = require('@react-native-firebase/firestore');
+      await setDoc(activityRef, {
         likedPosts: [postId],
         createdAt: new Date(),
       });
@@ -249,7 +267,8 @@ const addLikeToActivity = async (userId: string, postId: string) => {
 const removeLikeFromActivity = async (userId: string, postId: string) => {
   try {
     const activityRef = doc(db, 'UserActivities', userId);
-    await activityRef.update({
+    // Use updateDoc instead of calling update directly on the reference
+    await updateDoc(activityRef, {
       likedPosts: arrayRemove(postId),
     });
   } catch (error) {

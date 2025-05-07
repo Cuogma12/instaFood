@@ -286,6 +286,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     marginBottom: 12,
     paddingHorizontal: 12,
+    marginLeft: 7,
   },
   filterButton: {
     paddingVertical: 8,
