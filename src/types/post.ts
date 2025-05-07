@@ -58,7 +58,7 @@ export interface ReviewPost extends BasePost {
       cuisineType?: string[]; // Loại ẩm thực
       priceRange?: 'low' | 'medium' | 'high'; // Mức giá
       contactInfo?: {
-        phone?: string;
+        phone?: string ;
         website?: string;
       };
       openingHours?: string;
@@ -74,6 +74,21 @@ export interface GeneralPost extends BasePost {
 // Union type cho tất cả loại bài đăng
 export type Post = RecipePost | ReviewPost | GeneralPost;
 
+export interface AdminPost {
+  id: string;
+  caption: string;
+  username: string;
+  mediaUrls: string[];
+  postType: PostType;
+  createdAt: any;
+  isHidden?: boolean;
+  recipeDetails?: {
+    title: string;
+  };
+  reviewDetails?: {
+    name: string;
+  };
+}
 // Type dùng khi tạo bài đăng mới
 export interface CreatePostData {
   caption: string;
@@ -100,20 +115,3 @@ export interface ProfilePost {
   id: string;
   imageUrl: string;
 }
-
-export interface AdminPost {
-  id: string;
-  caption: string;
-  username: string;
-  mediaUrls: string[];
-  postType: PostType;
-  createdAt: any;
-  isHidden?: boolean;
-  recipeDetails?: {
-    title: string;
-  };
-  reviewDetails?: {
-    name: string;
-  };
-}
-

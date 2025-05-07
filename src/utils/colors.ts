@@ -7,5 +7,7 @@ export const colors = {
     darkGray: '#95A5A6',
     error: '#FF5252',
     hashtag: '#159ce2',
+    white: '#FFFFFF',
+    border: '000000'
 };
 

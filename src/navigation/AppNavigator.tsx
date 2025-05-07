@@ -9,6 +9,8 @@ import EditProfile from '../screens/user/EditProfile';
 import SettingScreen from '../screens/user/SettingScreen';
 import PostDetailScreen from '../screens/user/PostDetailScreen';
 import AdminNavigator from './AdminNavigator';
+import EditPost from '../screens/user/EditPost';
+import { Post } from '../types/post';
 import { UserApp } from './AppSwitcher';
 import { RootStackParamList } from '../types/stackparamlist';
 

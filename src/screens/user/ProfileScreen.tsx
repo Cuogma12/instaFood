@@ -9,12 +9,13 @@ import {
   Dimensions,
   FlatList,
   ActivityIndicator,
-  Modal
+  Modal,
+  Alert
 } from 'react-native';
 import { colors } from '../../utils/colors';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { getFirestore, collection, doc, getDoc, query, where, orderBy, getDocs } from '@react-native-firebase/firestore';
+import { getFirestore, collection, doc, getDoc, query, where, orderBy, getDocs, deleteDoc } from '@react-native-firebase/firestore';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import type { RootStackParamList } from '../../types/stackparamlist';
@@ -44,6 +45,7 @@ export default function ProfileScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [viewMode, setViewMode] = useState<'detail' | 'feed'>('detail'); // Chế độ xem: chi tiết hoặc feed
   const [initialScrollIndex, setInitialScrollIndex] = useState(0); // Vị trí scroll ban đầu trong FlatList
+  const [deleteLoading, setDeleteLoading] = useState(false); // Trạng thái đang xóa
   const db = getFirestore();
 
   const fetchUserData = async () => {
@@ -112,6 +114,62 @@ export default function ProfileScreen() {
 
   const navigateToCreatePost = () => {
     navigation.navigate('MainApp', { screen: 'CreatePost' });
+  };
+
+  // Hàm xóa bài viết
+  const handleDeletePost = async (postId: string) => {
+    Alert.alert(
+      "Xác nhận xóa",
+      "Bạn có chắc chắn muốn xóa bài viết này không?",
+      [
+        {
+          text: "Hủy",
+          style: "cancel"
+        },
+        {
+          text: "Xóa",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              setDeleteLoading(true);
+              
+              // Xóa bài viết từ Firestore
+              const postRef = doc(db, 'Posts', postId);
+              await deleteDoc(postRef);
+              
+              // Cập nhật số lượng bài viết trong thông tin người dùng
+              if (user && userProfile) {
+                const userRef = doc(db, 'Users', user.uid);
+                const newPostCount = Math.max(0, (userProfile.posts || 1) - 1);
+                
+                // Không cần updateDoc vì chúng ta sẽ refresh dữ liệu
+                setUserProfile({
+                  ...userProfile,
+                  posts: newPostCount
+                });
+              }
+              
+              // Cập nhật lại danh sách bài viết
+              setPosts(prevPosts => prevPosts.filter(post => post.id !== postId));
+              
+              // Đóng modal nếu đang hiển thị chi tiết bài viết bị xóa
+              if (selectedPost && selectedPost.id === postId) {
+                setModalVisible(false);
+              }
+              
+              setDeleteLoading(false);
+              
+              // Thông báo xóa thành công
+              Alert.alert("Thành công", "Đã xóa bài viết");
+            } catch (error) {
+              console.error('Error deleting post:', error);
+              setDeleteLoading(false);
+              Alert.alert("Lỗi", "Không thể xóa bài viết. Vui lòng thử lại sau.");
+            }
+          }
+        }
+      ]
+    );
   };
 
   const renderHeader = () => (
@@ -238,6 +296,13 @@ export default function ProfileScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.modalPostAction}>
             <Icon name="share" size={20} color={colors.text} />
+          </TouchableOpacity>
+          {/* Thêm nút xóa bài viết */}
+          <TouchableOpacity 
+            style={styles.modalPostAction}
+            onPress={() => handleDeletePost(item.id)}
+          >
+            <Icon name="trash" size={20} color={colors.error || 'red'} />
           </TouchableOpacity>
         </View>
 
@@ -385,6 +450,19 @@ export default function ProfileScreen() {
                     </TouchableOpacity>
                     <TouchableOpacity style={styles.interactionButton}>
                       <Icon name="share" size={24} color={colors.text} />
+                    </TouchableOpacity>
+                    
+                    {/* Thêm nút xóa bài viết */}
+                    <TouchableOpacity 
+                      style={styles.interactionButton}
+                      onPress={() => handleDeletePost(selectedPost.id)}
+                      disabled={deleteLoading}
+                    >
+                      {deleteLoading ? (
+                        <ActivityIndicator size="small" color={colors.error || 'red'} />
+                      ) : (
+                        <Icon name="trash" size={24} color={colors.error || 'red'} />
+                      )}
                     </TouchableOpacity>
                   </View>
 

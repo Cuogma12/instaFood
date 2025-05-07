@@ -10,6 +10,8 @@ import {
   query,
   orderBy,
   getDocs,
+  arrayRemove,
+  arrayUnion,
   deleteDoc
 } from '@react-native-firebase/firestore';
 import { getAuth } from '@react-native-firebase/auth';
@@ -34,6 +36,27 @@ export const uploadMedia = async (
   } catch (error) {
     console.error('Error uploading media:', error);
     throw error;
+  }
+};
+export const likePost = async (postId: string, userId: string, hasLiked: boolean) => {
+  try {
+    const postRef = doc(db, 'Posts', postId);
+    let updatedLikes;
+
+    if (hasLiked) {
+      // Nếu người dùng đã like, xóa họ khỏi danh sách likes
+      updatedLikes = arrayRemove(userId);
+    } else {
+      // Nếu người dùng chưa like, thêm họ vào danh sách likes
+      updatedLikes = arrayUnion(userId);
+    }
+
+    // Cập nhật danh sách likes trong bài đăng
+    await updateDoc(postRef, {
+      likes: updatedLikes,
+    });
+  } catch (error) {
+    console.error('Error liking post:', error);
   }
 };
 

@@ -1,3 +1,4 @@
+import { getFirestore, doc, updateDoc, arrayUnion, arrayRemove } from '@react-native-firebase/firestore';
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { colors } from '../../utils/colors';
@@ -7,19 +8,39 @@ import moment from 'moment';
 import 'moment/locale/vi';
 import RecipePost from '../../components/user/RecipePost';
 import ReviewPost from '../../components/user/ReviewPost';
+import { likePost } from '../../services/postServices'
+import { getAuth } from '@react-native-firebase/auth';
 
-function PostItem({ post }: { post: any }) {
+
+const db = getFirestore();
+const auth = getAuth();
+const userId = auth.currentUser?.uid;
+
+type PostItemProps = {
+  post: any;
+  userId: string;
+  onToggleLike: (postId: string, hasLiked: boolean) => void;
+};
+
+
+export function PostItem({ post, userId, onToggleLike  }: PostItemProps) {
   const [isFavorite, setIsFavorite] = React.useState(false);
   const [isVisible, setIsVisible] = React.useState(true);
   const [showFullCaption, setShowFullCaption] = React.useState(false);
   const CAPTION_LIMIT = 150; // Tăng giới hạn ký tự lên 150
+  
+  const hasLiked = Array.isArray(post.likes) ? post.likes.includes(userId) : false;
+
+  const handleLikePress = () => {
+    onToggleLike(post.id, hasLiked);
+  };
 
   moment.locale('vi');
 
   const handleFavorite = () => {
     setIsFavorite(!isFavorite);
   };
-
+  
   const handleHide = () => {
     setIsVisible(false);
   };
@@ -48,6 +69,7 @@ function PostItem({ post }: { post: any }) {
       </View>
     );
   };
+  
 
   const renderPostContent = () => {
     if (post.postType === 'review' && post.reviewDetails) {
@@ -94,10 +116,18 @@ function PostItem({ post }: { post: any }) {
       )}
       {/* Action bar */}
       <View style={styles.actionBar}>
-        <TouchableOpacity style={styles.actionBtn}>
+        {/* <TouchableOpacity style={styles.actionBtn} onPress={() => handleLike(post.id)}>
           <Icon name="heart-o" size={22} color="#FF4C61" />
           <Text style={[styles.actionText, { color: '#FF4C61', fontWeight: 'bold' }]}>{post.likes ? post.likes.length : 0}</Text>
+        </TouchableOpacity> */}
+
+        <TouchableOpacity style={styles.actionBtn}  onPress={handleLikePress}>
+          <Icon name={hasLiked ? 'heart' : 'heart-o'} size={22} color="#FF4C61" />
+          <Text style={[styles.actionText, { color: '#FF4C61', fontWeight: 'bold' }]}>
+            {post.likes?.length || 0}
+          </Text>
         </TouchableOpacity>
+
         <TouchableOpacity style={styles.actionBtn}>
           <Icon name="comment-o" size={22} color={colors.primary} />
           <Text style={[styles.actionText, { color: colors.primary, fontWeight: 'bold' }]}>{post.commentCount || 0}</Text>
@@ -117,6 +147,42 @@ export default function HomeScreen() {
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false); // Thêm state cho refresh
+
+
+  const handleToggleLike = async (postId: string, hasLiked: boolean) => {
+    try {
+      const updatedPosts = posts.map(post => {
+        if (post.id === postId) {
+          const currentLikes = Array.isArray(post.likes) ? post.likes : [];
+  
+          const updatedLikes = hasLiked
+            ? currentLikes.filter((id: string) => id !== userId)
+            : [...currentLikes, userId];
+  
+          return { ...post, likes: updatedLikes };
+        }
+        return post;
+      });
+  
+      setPosts(updatedPosts);
+  
+      // Gọi hàm Firestore
+      await likePost(postId, userId!, hasLiked);
+  
+      // Gọi cập nhật UserActivities
+      if (hasLiked) {
+        await removeLikeFromActivity(userId!, postId);
+      } else {
+        await addLikeToActivity(userId!, postId);
+      }
+  
+    } catch (error) {
+      console.error('Toggle like error:', error);
+    }
+  };
+  
+  
+
 
   const fetchPosts = async () => {
     setLoading(true);
@@ -149,7 +215,7 @@ export default function HomeScreen() {
       <FlatList
         data={posts}
         keyExtractor={item => item.id}
-        renderItem={({ item }) => <PostItem post={item} />}
+        renderItem={({ item }) => <PostItem post={item} userId={userId!} onToggleLike={handleToggleLike}/>}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 16 }}
         refreshControl={
@@ -159,6 +225,37 @@ export default function HomeScreen() {
     </View>
   );
 }
+
+const addLikeToActivity = async (userId: string, postId: string) => {
+  try {
+    const activityRef = doc(db, 'UserActivities', userId);
+    const activityDoc = await activityRef.get();
+
+    if (activityDoc.exists) {
+      await activityRef.update({
+        likedPosts: arrayUnion(postId),
+      });
+    } else {
+      await activityRef.set({
+        likedPosts: [postId],
+        createdAt: new Date(),
+      });
+    }
+  } catch (error) {
+    console.error("Error adding like to activity:", error);
+  }
+};
+
+const removeLikeFromActivity = async (userId: string, postId: string) => {
+  try {
+    const activityRef = doc(db, 'UserActivities', userId);
+    await activityRef.update({
+      likedPosts: arrayRemove(postId),
+    });
+  } catch (error) {
+    console.error("Error removing like from activity:", error);
+  }
+};
 
 const styles = StyleSheet.create({
   container: {
@@ -227,7 +324,7 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   hashtag: {
-    color: colors.hashtag,
+    color: colors.primary,
     fontSize: 14,
     marginBottom: 8,
     marginHorizontal: 16,

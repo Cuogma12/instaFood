@@ -1,3 +1,5 @@
+import { Post } from "./post";
+
 // Kiểu RootStackParamList để khai báo các màn hình trong navigation
 export type RootStackParamList = {
   Login: undefined;
@@ -8,6 +10,7 @@ export type RootStackParamList = {
   Admin: undefined;
   RecipePost: { id: string };
   PostDetail: { postId: string };
+  EditPost: { post: Post };
 };
 
 export type AdminStackParamList = {
