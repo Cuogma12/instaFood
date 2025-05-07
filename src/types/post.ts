@@ -15,6 +15,7 @@ export interface BasePost {
   mediaUrls: string[];    // Có thể có nhiều ảnh
   mediaType: 'image' | 'video';
   likes: string[];        // Danh sách userId đã like
+  favorites: string[];    // Danh sách userId đã đánh dấu yêu thích
   commentCount: number;
   hashtags: string[];
   categoryIds?: string[]; // Liên kết với Categories

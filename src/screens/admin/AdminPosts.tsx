@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { colors } from '../../utils/colors';
-import { getAllPosts, deletePost, togglePostVisibility } from '../../services/postServices';
+import { getAllPosts, deletePost, togglePostVisibility, toggleFavoritePost, isPostFavorited } from '../../services/postServices';
 import { PostType } from '../../types/post';
 import moment from 'moment';
 import { AdminPost } from '../../types/post';
@@ -25,12 +25,30 @@ export default function AdminPosts() {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<PostType | 'all'>('all');
+  const [favoritePosts, setFavoritePosts] = useState<{[key: string]: boolean}>({});
+  const [loadingFavorites, setLoadingFavorites] = useState(false);
+
+  // Kiểm tra bài đăng yêu thích khi tải danh sách
+  const checkFavoritePosts = async (postsData: AdminPost[]) => {
+    setLoadingFavorites(true);
+    try {
+      const favorites: {[key: string]: boolean} = {};
+      for (const post of postsData) {
+        favorites[post.id] = await isPostFavorited(post.id);
+      }
+      setFavoritePosts(favorites);
+    } catch (error) {
+      console.error('Error checking favorite posts:', error);
+    }
+    setLoadingFavorites(false);
+  };
 
   const fetchPosts = async () => {
     setLoading(true);
     try {
       const postsData = await getAllPosts();
       setPosts(postsData as AdminPost[]);
+      checkFavoritePosts(postsData as AdminPost[]);
     } catch (error) {
       Alert.alert('Lỗi', 'Không thể tải danh sách bài đăng');
     }
@@ -81,6 +99,20 @@ export default function AdminPosts() {
     }
   };
 
+  // Xử lý yêu thích bài đăng
+  const handleToggleFavorite = async (postId: string) => {
+    try {
+      const isFavorite = !favoritePosts[postId];
+      await toggleFavoritePost(postId, isFavorite);
+      setFavoritePosts({
+        ...favoritePosts,
+        [postId]: isFavorite
+      });
+    } catch (error) {
+      Alert.alert('Lỗi', 'Không thể cập nhật trạng thái yêu thích');
+    }
+  };
+
   const renderPostItem = ({ item }: { item: AdminPost }) => (
     <View style={styles.postItem}>
       <Image 
@@ -118,6 +150,16 @@ export default function AdminPosts() {
           style={styles.actionButton}
         >
           <Icon name="trash" size={20} color={colors.error} />
+        </TouchableOpacity>
+        <TouchableOpacity 
+          onPress={() => handleToggleFavorite(item.id)}
+          style={styles.actionButton}
+        >
+          <Icon 
+            name={favoritePosts[item.id] ? 'heart' : 'heart-o'} 
+            size={20} 
+            color={colors.primary}
+          />
         </TouchableOpacity>
       </View>
     </View>

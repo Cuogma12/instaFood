@@ -24,6 +24,7 @@ import useAuth from '../../hooks/useAuth';
 import AuthRequired from '../../components/auth/AuthRequired';
 import RecipePost from '../../components/user/RecipePost';
 import ReviewPost from '../../components/user/ReviewPost';
+import { getFavoritePostsDetails } from '../../services/postServices';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = width / 3;
@@ -39,11 +40,14 @@ export default function ProfileScreen() {
   const { isAuthenticated, authChecked, user } = useAuth();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
+  const [favoritePosts, setFavoritePosts] = useState<ProfilePost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingFavorites, setLoadingFavorites] = useState(false);
   const [selectedPost, setSelectedPost] = useState<Post | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [viewMode, setViewMode] = useState<'detail' | 'feed'>('detail'); // Chế độ xem: chi tiết hoặc feed
   const [initialScrollIndex, setInitialScrollIndex] = useState(0); // Vị trí scroll ban đầu trong FlatList
+  const [activeTab, setActiveTab] = useState<'posts' | 'favorites'>('posts'); // Tab đang hiển thị: bài đăng hoặc yêu thích
   const db = getFirestore();
 
   const fetchUserData = async () => {
@@ -94,7 +98,31 @@ export default function ProfileScreen() {
       setLoading(false);
     }
   };
-  
+
+  // Tải danh sách bài đăng yêu thích
+  const fetchFavoritePosts = async () => {
+    if (!user) return;
+    
+    try {
+      setLoadingFavorites(true);
+      const favoritePostsData = await getFavoritePostsDetails();
+      
+      const formattedFavoritePosts = favoritePostsData.map((post: any) => ({
+        id: post.id,
+        ...post,
+        imageUrl: post.mediaUrls && post.mediaUrls.length > 0
+          ? post.mediaUrls[0]
+          : `https://picsum.photos/200/200?random=${Math.random()}`
+      }));
+      
+      setFavoritePosts(formattedFavoritePosts);
+      setLoadingFavorites(false);
+    } catch (error) {
+      console.error('Error fetching favorite posts:', error);
+      setLoadingFavorites(false);
+    }
+  };
+
   useFocusEffect(
     React.useCallback(() => {
       fetchUserData();
@@ -109,6 +137,13 @@ export default function ProfileScreen() {
       fetchUserData();
     }
   }, [user]);
+
+  // Tải danh sách bài đăng yêu thích khi chuyển tab
+  useEffect(() => {
+    if (activeTab === 'favorites' && user) {
+      fetchFavoritePosts();
+    }
+  }, [activeTab, user]);
 
   const navigateToCreatePost = () => {
     navigation.navigate('MainApp', { screen: 'CreatePost' });
@@ -175,11 +210,17 @@ export default function ProfileScreen() {
 
   const renderTabs = () => (
     <View style={styles.tabsContainer}>
-      <TouchableOpacity style={styles.tabItem}>
-        <Icon name="th" size={22} color={colors.text} />
+      <TouchableOpacity 
+        style={[styles.tabItem, activeTab === 'posts' && styles.activeTabItem]}
+        onPress={() => setActiveTab('posts')}
+      >
+        <Icon name="th" size={22} color={activeTab === 'posts' ? colors.primary : colors.text} />
       </TouchableOpacity>
-      <TouchableOpacity style={styles.tabItem}>
-        <Icon name="bookmark" size={22} color={colors.darkGray} />
+      <TouchableOpacity 
+        style={[styles.tabItem, activeTab === 'favorites' && styles.activeTabItem]}
+        onPress={() => setActiveTab('favorites')}
+      >
+        <Icon name="bookmark" size={22} color={activeTab === 'favorites' ? colors.primary : colors.text} />
       </TouchableOpacity>
     </View>
   );
@@ -256,39 +297,72 @@ export default function ProfileScreen() {
   };
 
   const renderPosts = () => {
-    if (loading) {
+    // Hiển thị bài đăng thông thường
+    if (activeTab === 'posts') {
+      if (loading) {
+        return (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        );
+      }
+
+      if (posts.length === 0) {
+        return (
+          <View style={styles.emptyContainer}>
+            <Icon name="camera" size={50} color={colors.lightGray} />
+            <Text style={styles.emptyText}>Chưa có bài viết nào</Text>
+            <TouchableOpacity
+              style={styles.emptyButton}
+              onPress={navigateToCreatePost}
+            >
+              <Text style={styles.emptyButtonText}>Tạo bài viết đầu tiên</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+
       return (
-        <View style={styles.emptyContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-        </View>
+        <FlatList
+          data={posts}
+          renderItem={renderPostItem}
+          keyExtractor={(item) => item.id}
+          numColumns={3}
+          scrollEnabled={false}
+          style={styles.postsGrid}
+        />
       );
     }
+    // Hiển thị bài đăng yêu thích
+    else {
+      if (loadingFavorites) {
+        return (
+          <View style={styles.emptyContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        );
+      }
 
-    if (posts.length === 0) {
+      if (favoritePosts.length === 0) {
+        return (
+          <View style={styles.emptyContainer}>
+            <Icon name="heart" size={50} color={colors.lightGray} />
+            <Text style={styles.emptyText}>Chưa có bài viết yêu thích nào</Text>
+          </View>
+        );
+      }
+
       return (
-        <View style={styles.emptyContainer}>
-          <Icon name="camera" size={50} color={colors.lightGray} />
-          <Text style={styles.emptyText}>Chưa có bài viết nào</Text>
-          <TouchableOpacity
-            style={styles.emptyButton}
-            onPress={navigateToCreatePost}
-          >
-            <Text style={styles.emptyButtonText}>Tạo bài viết đầu tiên</Text>
-          </TouchableOpacity>
-        </View>
+        <FlatList
+          data={favoritePosts}
+          renderItem={renderPostItem}
+          keyExtractor={(item) => item.id}
+          numColumns={3}
+          scrollEnabled={false}
+          style={styles.postsGrid}
+        />
       );
     }
-
-    return (
-      <FlatList
-        data={posts}
-        renderItem={renderPostItem}
-        keyExtractor={(item) => item.id}
-        numColumns={3}
-        scrollEnabled={false}
-        style={styles.postsGrid}
-      />
-    );
   };
 
   return (
@@ -426,8 +500,8 @@ export default function ProfileScreen() {
                     {/* Thời gian đăng */}
                     {selectedPost.createdAt && (
                       <Text style={styles.timestamp}>
-                        {typeof selectedPost.createdAt === 'object' && selectedPost.createdAt.toDate
-                          ? selectedPost.createdAt.toDate().toLocaleDateString()
+                        {selectedPost.createdAt instanceof Date
+                          ? selectedPost.createdAt.toLocaleDateString()
                           : new Date(selectedPost.createdAt).toLocaleDateString()}
                       </Text>
                     )}
@@ -438,7 +512,7 @@ export default function ProfileScreen() {
               {/* Body modal - Danh sách bài đăng */}
               {viewMode === 'feed' && (
                 <FlatList
-                  data={posts}
+                  data={activeTab === 'posts' ? posts as unknown as Post[] : favoritePosts as unknown as Post[]}
                   renderItem={renderModalPostItem}
                   keyExtractor={(item) => item.id}
                   initialScrollIndex={initialScrollIndex}
@@ -579,6 +653,10 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     paddingVertical: 8,
+  },
+  activeTabItem: {
+    borderBottomWidth: 2,
+    borderBottomColor: colors.primary,
   },
   content: {
     flex: 1,

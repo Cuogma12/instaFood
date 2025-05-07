@@ -7,6 +7,7 @@ import LoginScreen from '../screens/auth/login';
 import RegisterScreen from '../screens/auth/register';
 import EditProfile from '../screens/user/EditProfile';
 import SettingScreen from '../screens/user/SettingScreen';
+import PostDetailScreen from '../screens/user/PostDetailScreen';
 import AdminNavigator from './AdminNavigator';
 import { UserApp } from './AppSwitcher';
 import { RootStackParamList } from '../types/stackparamlist';
@@ -48,6 +49,14 @@ export default function AppNavigator() {
         options={{
           headerShown: true,
           title: 'Cài đặt'
+        }}
+      />
+      <Stack.Screen
+        name="PostDetail"
+        component={PostDetailScreen}
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right'
         }}
       />
     </Stack.Navigator>
