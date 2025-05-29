@@ -8,27 +8,54 @@ import {
   TextInput,
   ScrollView,
   Platform,
-  ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
+  Alert,
   Modal,
-  FlatList
+  ActivityIndicator,
+  FlatList,
+  Pressable
 } from 'react-native';
 import { colors } from '../../utils/colors';
-import Icon from 'react-native-vector-icons/FontAwesome';
+import { useNavigation } from '@react-navigation/native';
+import { CommonActions } from '@react-navigation/native';
 import { launchImageLibrary, launchCamera } from 'react-native-image-picker';
-import { useNavigation, CommonActions } from '@react-navigation/native';
-import { PostType, CreatePostData } from '../../types/post';
-import { uploadMedia, createPost } from '../../services/postServices';
-import { Category, getAllCategories } from '../../services/categoriesServices';
+import Icon from 'react-native-vector-icons/FontAwesome';
 import { getAuth, onAuthStateChanged } from '@react-native-firebase/auth';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { PostTypeTabProps } from '../../types/props/PostProps';
-import { serverTimestamp } from '@react-native-firebase/firestore';
+import { createPost } from '../../services/postServices';
+import { uploadMediaToCloudinary } from '../../services/mediaServices';
+import { getAllCategories } from '../../services/categoriesServices';
+import RecipePost from '../../components/user/RecipePost';
+import ReviewPost from '../../components/user/ReviewPost';
+import useAuth from '../../hooks/useAuth';
+import AuthRequired from '../../components/auth/AuthRequired';
+
+// Enum cho các loại bài đăng
+enum PostType {
+  GENERAL = 'general',
+  RECIPE = 'recipe',
+  REVIEW = 'review'
+}
+
+// Interface cho Category
+interface Category {
+  categoryId: string;
+  name: string;
+  description?: string;
+  type: string;
+}
+
+// Interface cho props của Tab loại bài đăng
+interface PostTypeTabProps {
+  title: string;
+  active: boolean;
+  onPress: () => void;
+  icon: string;
+}
 
 const PostTypeTab: React.FC<PostTypeTabProps> = ({ title, active, onPress, icon }) => (
-  <TouchableOpacity 
-    style={[styles.tab, active && styles.activeTab]} 
+  <TouchableOpacity
+    style={[styles.tab, active && styles.activeTab]}
     onPress={onPress}
   >
     <Icon name={icon} size={20} color={active ? colors.primary : colors.darkGray} />
@@ -36,27 +63,61 @@ const PostTypeTab: React.FC<PostTypeTabProps> = ({ title, active, onPress, icon 
   </TouchableOpacity>
 );
 
-export default function CreatePostScreen() {
-  const navigation = useNavigation();
+// Componente de cabeçalho da prévia
+const PreviewHeader: React.FC<{ postType: PostType }> = ({ postType }) => {
+  let typeText = 'Bài viết thông thường';
+  let typeIcon = 'photo';
+  let typeColor = '#3498db';
 
-  // State kiểm tra đăng nhập
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [authChecked, setAuthChecked] = useState(false);
+  if (postType === PostType.RECIPE) {
+    typeText = 'Công thức nấu ăn';
+    typeIcon = 'cutlery';
+    typeColor = '#e67e22';
+  } else if (postType === PostType.REVIEW) {
+    typeText = 'Đánh giá món ăn';
+    typeIcon = 'star';
+    typeColor = '#f39c12';
+  }
 
-  // States
-  const [postType, setPostType] = useState<PostType>(PostType.GENERAL);
+  return (
+    <View style={styles.reviewHeader}>
+      <View style={[styles.previewType, { backgroundColor: typeColor }]}>
+        <Icon name={typeIcon} size={14} color="#fff" style={{ marginRight: 4 }} />
+        <Text style={styles.previewType}>{typeText}</Text>
+      </View>
+      <Text style={styles.previewType}>Xem trước bài đăng của bạn</Text>
+    </View>
+  );
+};
+
+
+interface CreatePostScreenProps {
+  navigation: any;
+}
+
+export default function CreatePostScreen({ navigation }: CreatePostScreenProps) {
+  // Authentication state
+  const { isAuthenticated, authChecked, user } = useAuth();
+
+  // State variables
+  const [postType, setPostType] = useState(PostType.RECIPE);
   const [caption, setCaption] = useState('');
-  const [hashtags, setHashtags] = useState<string[]>([]);
-  const [hashtagInput, setHashtagInput] = useState('');
   const [selectedImages, setSelectedImages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [hashtags, setHashtags] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
+
+  // Modal for category selection
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  
+  // For hashtag input
+  const [hashtagInput, setHashtagInput] = useState('');
 
   // Recipe specific states
   const [recipeTitle, setRecipeTitle] = useState('');
-  const [prepTime, setPrepTime] = useState('');
-  const [cookTime, setCookTime] = useState('');
-  const [servings, setServings] = useState('');
-  const [difficulty, setDifficulty] = useState<'easy' | 'medium' | 'hard'>('medium');
+  const [prepTime, setPrepTime] = useState(''); // Thời gian chuẩn bị
+  const [servings, setServings] = useState(''); // 
   const [ingredients, setIngredients] = useState<string[]>([]);
   const [ingredientInput, setIngredientInput] = useState('');
   const [instructions, setInstructions] = useState<string[]>([]);
@@ -70,47 +131,125 @@ export default function CreatePostScreen() {
   const [proInput, setProInput] = useState('');
   const [cons, setCons] = useState<string[]>([]);
   const [conInput, setConInput] = useState('');
-
-  // Restaurant specific states
   const [restaurantName, setRestaurantName] = useState('');
-  const [cuisineTypes, setCuisineTypes] = useState<string[]>([]);
-  const [cuisineInput, setCuisineInput] = useState('');
-  const [priceRange, setPriceRange] = useState<'low' | 'medium' | 'high'>('medium');
-  const [phoneNumber, setPhoneNumber] = useState('');
-  const [website, setWebsite] = useState('');
-  const [openingHours, setOpeningHours] = useState('');
+  const [restaurantAddress, setRestaurantAddress] = useState('');
 
-  // Location states (common for all types)
-  const [locationName, setLocationName] = useState('');
+  // User info
 
-  // Categories states
-  const [categories, setCategories] = useState<Category[]>([]);
-  const [selectedCategories, setSelectedCategories] = useState<Category[]>([]);
-  const [categoriesModalVisible, setCategoriesModalVisible] = useState(false);
-  const [loadingCategories, setLoadingCategories] = useState(false);
-
-  // Kiểm tra trạng thái đăng nhập khi component được tạo
+  // Fetch categories on component mount
   useEffect(() => {
-    const auth = getAuth();
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setIsAuthenticated(!!user);
-      setAuthChecked(true);
-    });
-    
-    return () => unsubscribe();
-  }, []);
-
-  // Load categories when component mounts
-  useEffect(() => {
-    const fetchCategories = async () => {
-      setLoadingCategories(true);
-      const categoriesList = await getAllCategories();
-      setCategories(categoriesList);
-      setLoadingCategories(false);
-    };
-    
     fetchCategories();
   }, []);
+
+  const fetchCategories = async () => {
+    try {
+      const fetchedCategories = await getAllCategories();
+      setCategories(fetchedCategories);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
+  };
+  const userProfile = {
+    photoURL: '',
+    displayName: 'User'
+  };
+
+  // Hàm đăng bài
+  const handleCreatePost = async () => {
+    if (selectedImages.length === 0) {
+      Alert.alert('Lỗi', 'Vui lòng chọn ít nhất 1 ảnh');
+      return;
+    }
+    if (!caption.trim()) {
+      Alert.alert('Lỗi', 'Vui lòng nhập mô tả bài đăng');
+      return;
+    }
+    try {
+      setLoading(true);
+      // Upload tất cả ảnh lên Cloudinary
+      const uploadResults = await Promise.all(
+        selectedImages.map(img => uploadMediaToCloudinary(img.uri, 'image'))
+      );
+      // Lấy ra các URL thành công
+      const mediaUrls = uploadResults
+        .filter(res => res.success && res.url)
+        .map(res => res.url as string);
+      if (mediaUrls.length === 0) {
+        setLoading(false);
+        Alert.alert('Lỗi', 'Tải ảnh lên thất bại, vui lòng thử lại!');
+        return;
+      }
+      // Chuẩn bị dữ liệu post
+      const postData: any = {
+        caption,
+        mediaUrls,
+        mediaType: 'image',
+        hashtags,
+        categoryIds: selectedCategories.map(cat => cat.categoryId),
+        postType,
+        location: restaurantAddress ? { name: restaurantName, address: restaurantAddress } : undefined,
+        createdAt: new Date().toISOString(),
+      };
+      // Thêm dữ liệu chi tiết tùy theo loại bài đăng
+      switch (postType) {
+        case PostType.RECIPE:
+          postData.recipeDetails = {
+            title: recipeTitle,
+            prepTime,
+            servings,
+            ingredients,
+            instructions,
+          };
+          break;
+        case PostType.REVIEW:
+          postData.reviewDetails = {
+            name: foodName,
+            rating,
+            price,
+            pros,
+            cons,
+            restaurantInfo: {
+              name: restaurantName,
+              address: restaurantAddress,
+            },
+          };
+          break;
+        default:
+          break;
+      }
+      // Gọi API tạo bài viết
+      const result = await createPost(postData);
+      setLoading(false);
+      if (result.success) {
+        Alert.alert('Thành công', 'Bài đăng đã được tạo!', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+      } else {
+        Alert.alert('Lỗi', result.error || 'Không thể tạo bài đăng');
+      }
+      // Reset form nếu muốn
+      setCaption('');
+      setSelectedImages([]);
+      setHashtags([]);
+      setSelectedCategories([]);
+      setRecipeTitle('');
+      setPrepTime('');
+      setServings('');
+      setIngredients([]);
+      setInstructions([]);
+      setFoodName('');
+      setRating(5);
+      setPrice('');
+      setPros([]);
+      setCons([]);
+      setRestaurantName('');
+      setRestaurantAddress('');
+    } catch (error) {
+      setLoading(false);
+      console.error('CreatePost error:', error);
+      Alert.alert('Lỗi', 'Đã có lỗi xảy ra khi tạo bài đăng');
+    }
+  };
 
   // Hàm chọn ảnh từ thư viện
   const selectImages = () => {
@@ -122,1152 +261,1211 @@ export default function CreatePostScreen() {
       if (response.didCancel) {
         return;
       }
-      
+
       if (response.errorCode) {
         Alert.alert('Lỗi', response.errorMessage || 'Không thể chọn ảnh');
         return;
       }
-      
+
       if (response.assets) {
         setSelectedImages([...selectedImages, ...response.assets]);
       }
     });
   };
 
-  // Hàm mở camera
-  const openCamera = () => {
-    launchCamera({
-      mediaType: 'photo',
-      quality: 0.8,
-    }, (response) => {
-      if (response.didCancel) {
-        return;
-      }
-      
-      if (response.errorCode) {
-        Alert.alert('Lỗi', response.errorMessage || 'Không thể mở camera');
-        return;
-      }
-      
-      if (response.assets && response.assets.length > 0) {
-        setSelectedImages([...selectedImages, response.assets[0]]);
-      }
-    });
-  };
-
-  // Hàm xử lý thêm hashtag
-  const addHashtag = () => {
-    const tag = hashtagInput.trim();
-    if (tag && !hashtags.includes(tag)) {
-      setHashtags([...hashtags, tag]);
-      setHashtagInput('');
-    }
-  };
-
-  // Hàm xử lý thêm nguyên liệu (cho recipe)
-  const addIngredient = () => {
-    const ingredient = ingredientInput.trim();
-    if (ingredient && !ingredients.includes(ingredient)) {
-      setIngredients([...ingredients, ingredient]);
-      setIngredientInput('');
-    }
-  };
-
-  // Hàm xử lý thêm bước hướng dẫn (cho recipe)
-  const addInstruction = () => {
-    const instruction = instructionInput.trim();
-    if (instruction) {
-      setInstructions([...instructions, instruction]);
-      setInstructionInput('');
-    }
-  };
-
-  // Xử lý thêm điểm tốt (pros) cho review
-  const addPro = () => {
-    const pro = proInput.trim();
-    if (pro && !pros.includes(pro)) {
-      setPros([...pros, pro]);
-      setProInput('');
-    }
-  };
-
-  // Xử lý thêm điểm chưa tốt (cons) cho review
-  const addCon = () => {
-    const con = conInput.trim();
-    if (con && !cons.includes(con)) {
-      setCons([...cons, con]);
-      setConInput('');
-    }
-  };
-
-  // Xử lý thêm loại ẩm thực (cho restaurant)
-  const addCuisine = () => {
-    const cuisine = cuisineInput.trim();
-    if (cuisine && !cuisineTypes.includes(cuisine)) {
-      setCuisineTypes([...cuisineTypes, cuisine]);
-      setCuisineInput('');
-    }
-  };
-
-  // Hàm xử lý chọn/bỏ chọn category
-  const toggleCategorySelection = (category: Category) => {
-    const isSelected = selectedCategories.some(cat => cat.categoryId === category.categoryId);
-    
-    if (isSelected) {
-      setSelectedCategories(selectedCategories.filter(cat => cat.categoryId !== category.categoryId));
-    } else {
-      setSelectedCategories([...selectedCategories, category]);
-    }
-  };
-
-  // Hàm đăng bài
-  const handleCreatePost = async () => {
-    if (selectedImages.length === 0) {
-      Alert.alert('Lỗi', 'Vui lòng chọn ít nhất 1 ảnh');
-      return;
-    }
-
-    if (!caption.trim()) {
-      Alert.alert('Lỗi', 'Vui lòng nhập mô tả bài đăng');
-      return;
-    }
-
-    try {
-      setLoading(true);
-
-      // Upload tất cả ảnh
-      const mediaUrls = await Promise.all(
-        selectedImages.map(img => uploadMedia(img.uri, 'image'))
-      );
-
-      // Chuẩn bị dữ liệu cơ bản
-      const postData: CreatePostData = {
-        caption,
-        mediaUrls,
-        mediaType: 'image',
-        hashtags,
-        categoryIds: selectedCategories.map(cat => cat.categoryId),
-        postType,
-        location: locationName ? { name: locationName } : undefined,
-        createdAt: new Date().toISOString(), // Thêm thời gian tạo bài đăng
-      };
-
-      // Thêm dữ liệu chi tiết tùy theo loại bài đăng
-      switch (postType) {
-        case PostType.RECIPE:
-          postData.recipeDetails = {
-            title: recipeTitle,
-            preparationTime: parseInt(prepTime) || 0,
-            cookingTime: parseInt(cookTime) || 0,
-            servings: parseInt(servings) || 1,
-            ingredients,
-            instructions,
-            difficulty,
-          };
-          break;
-
-        case PostType.REVIEW:
-          postData.reviewDetails = {
-            name: foodName,
-            rating: rating,
-            price: price ? parseFloat(price) : undefined,
-            pros,
-            cons,
-            restaurantInfo: {
-              name: restaurantName,
-              cuisineType: cuisineTypes,
-              priceRange,
-              contactInfo: {
-                phone: phoneNumber || undefined,
-                website: website || undefined,
-              },
-              openingHours: openingHours || undefined,
-            }
-          };
-          break;
-
-        default:
-          break;
-      }
-
-      // Tạo bài đăng
-      const result = await createPost(postData);
-
-      setLoading(false);
-
-      if (result.success) {
-        Alert.alert('Thành công', 'Bài đăng đã được tạo!', [
-          { text: 'OK', onPress: () => navigation.goBack() }
-        ]);
-      } else {
-        Alert.alert('Lỗi', result.error || 'Không thể tạo bài đăng');
-      }
-    } catch (error) {
-      setLoading(false);
-      console.error('CreatePost error:', error);
-      Alert.alert('Lỗi', 'Đã có lỗi xảy ra khi tạo bài đăng');
-    }
-  };
-
-  // Render các input theo loại bài đăng
-  const renderPostTypeInputs = () => {
+  const isFormValid = () => {
     switch (postType) {
       case PostType.RECIPE:
-        return (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Thông tin công thức</Text>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Tên món ăn</Text>
+        return !!(recipeTitle && ingredients.length > 0 && instructions.length > 0);
+      case PostType.REVIEW:
+        return !!(foodName && rating && pros.length > 0);
+      case PostType.GENERAL:
+        return !!(caption && selectedImages.length > 0);
+      default:
+        return true;
+    }
+  };
+
+  const renderRecipeSection = () => {
+    return (
+      <View style={styles.recipeSection}>
+        {/* Recipe Title */}
+        <View style={styles.recipeHeader}>
+             <Text style={styles.sectionTitle}>Nội dung bài viết</Text>
+          <TextInput
+            style={styles.captionInput}
+            value={caption}
+            onChangeText={setCaption}
+            placeholder="Nhập nội dung ..."
+            multiline
+          />
+          <TextInput
+            style={styles.recipeTitleInput}
+            value={recipeTitle}
+            onChangeText={setRecipeTitle}
+            placeholder="Tên món ăn..."
+          />
+       
+          {/* Time and Servings */}
+          <View style={styles.metaRow}>
+            <View style={styles.metaItem}>
+              <Icon name="clock-o" size={16} color={colors.darkGray} />
               <TextInput
-                style={styles.input}
-                value={recipeTitle}
-                onChangeText={setRecipeTitle}
-                placeholder="Ví dụ: Bánh xèo miền Trung"
+                style={styles.metaInput}
+                value={prepTime}
+                onChangeText={setPrepTime}
+                placeholder="0"
+                keyboardType="numeric"
               />
+              <Text style={styles.metaLabel}>phút</Text>
             </View>
-            
-            <View style={styles.rowContainer}>
-              <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
-                <Text style={styles.inputLabel}>Thời gian chuẩn bị (phút)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={prepTime}
-                  onChangeText={setPrepTime}
-                  placeholder="15"
-                  keyboardType="number-pad"
-                />
-              </View>
-              
-              <View style={[styles.inputContainer, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>Thời gian nấu (phút)</Text>
-                <TextInput
-                  style={styles.input}
-                  value={cookTime}
-                  onChangeText={setCookTime}
-                  placeholder="30"
-                  keyboardType="number-pad"
-                />
-              </View>
-            </View>
-            
-            <View style={styles.rowContainer}>
-              <View style={[styles.inputContainer, { flex: 1, marginRight: 8 }]}>
-                <Text style={styles.inputLabel}>Khẩu phần</Text>
-                <TextInput
-                  style={styles.input}
-                  value={servings}
-                  onChangeText={setServings}
-                  placeholder="2"
-                  keyboardType="number-pad"
-                />
-              </View>
-              
-              <View style={[styles.inputContainer, { flex: 1 }]}>
-                <Text style={styles.inputLabel}>Độ khó</Text>
-                <View style={styles.buttonGroup}>
-                  <TouchableOpacity
-                    style={[
-                      styles.button,
-                      difficulty === 'easy' && styles.activeButton
-                    ]}
-                    onPress={() => setDifficulty('easy')}
-                  >
-                    <Text style={[
-                      styles.buttonText,
-                      difficulty === 'easy' && styles.activeButtonText
-                    ]}>Dễ</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[
-                      styles.button,
-                      difficulty === 'medium' && styles.activeButton
-                    ]}
-                    onPress={() => setDifficulty('medium')}
-                  >
-                    <Text style={[
-                      styles.buttonText,
-                      difficulty === 'medium' && styles.activeButtonText
-                    ]}>Vừa</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[
-                      styles.button,
-                      difficulty === 'hard' && styles.activeButton
-                    ]}
-                    onPress={() => setDifficulty('hard')}
-                  >
-                    <Text style={[
-                      styles.buttonText,
-                      difficulty === 'hard' && styles.activeButtonText
-                    ]}>Khó</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Nguyên liệu</Text>
-              <View style={styles.tagInputContainer}>
-                <TextInput
-                  style={styles.tagInput}
-                  value={ingredientInput}
-                  onChangeText={setIngredientInput}
-                  placeholder="Thêm nguyên liệu"
-                  onSubmitEditing={addIngredient}
-                />
-                <TouchableOpacity style={styles.addButton} onPress={addIngredient}>
-                  <Icon name="plus" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.tagsContainer}>
-                {ingredients.map((ingredient, index) => (
-                  <View key={`ingredient-${index}`} style={styles.tag}>
-                    <Text style={styles.tagText}>{ingredient}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const newIngredients = [...ingredients];
-                        newIngredients.splice(index, 1);
-                        setIngredients(newIngredients);
-                      }}
-                    >
-                      <Icon name="times" size={14} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Các bước thực hiện</Text>
+            <View style={styles.metaItem}>
+              <Icon name="users" size={16} color={colors.darkGray} />
               <TextInput
-                style={[styles.input, { textAlignVertical: 'top' }]}
-                value={instructionInput}
-                onChangeText={setInstructionInput}
-                placeholder="Nhập bước hướng dẫn"
-                multiline
-                numberOfLines={3}
+                style={styles.metaInput}
+                value={servings}
+                onChangeText={setServings}
+                placeholder="0"
+                keyboardType="numeric"
               />
-              <TouchableOpacity style={styles.addButton} onPress={addInstruction}>
-                <Text style={styles.addButtonText}>Thêm bước</Text>
-              </TouchableOpacity>
-              
-              <View style={styles.instructionsContainer}>
-                {instructions.map((instruction, index) => (
-                  <View key={`instruction-${index}`} style={styles.instruction}>
-                    <Text style={styles.instructionNumber}>{index + 1}</Text>
-                    <Text style={styles.instructionText}>{instruction}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const newInstructions = [...instructions];
-                        newInstructions.splice(index, 1);
-                        setInstructions(newInstructions);
-                      }}
-                    >
-                      <Icon name="trash" size={18} color={colors.primary} />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
+              <Text style={styles.metaLabel}>người</Text>
             </View>
           </View>
-        );
+        </View>
+
+        {/* Ingredients */}
+        <View style={styles.inputSection}>
+          <Text style={styles.sectionTitle}>🧂 Nguyên liệu</Text>
+          <View style={styles.ingredientInputRow}>
+            <TextInput
+              style={styles.ingredientInput}
+              value={ingredientInput}
+              onChangeText={setIngredientInput}
+              placeholder="Thêm nguyên liệu..."
+              onSubmitEditing={() => {
+                if (ingredientInput.trim()) {
+                  setIngredients([...ingredients, ingredientInput.trim()]);
+                  setIngredientInput('');
+                }
+              }}
+            />
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => {
+                if (ingredientInput.trim()) {
+                  setIngredients([...ingredients, ingredientInput.trim()]);
+                  setIngredientInput('');
+                }
+              }}
+            >
+              <Icon name="plus" size={20} color={colors.primary} />
+            </TouchableOpacity>
+
+
+          </View>
+          {ingredients.map((item, index) => (
+            <View key={`ingredient-${index}`} style={styles.listItem}>
+              <Icon name="circle" size={8} color={colors.primary} style={{ marginTop: 8 }} />
+              <Text style={styles.listItemText}>{item}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const newIngredients = [...ingredients];
+                  newIngredients.splice(index, 1);
+                  setIngredients(newIngredients);
+                }}
+              >
+                <Icon name="times" size={20} color={colors.darkGray} />
+              </TouchableOpacity>
+
+            </View>
+          ))}
+
+
+        </View>
+
+        {/* Instructions */}
+        <View style={styles.inputSection}>
+          <Text style={styles.sectionTitle}>🥘 Cách làm</Text>
+          <View style={styles.instructionInputRow}>
+            <TextInput
+              style={styles.instructionInput}
+              value={instructionInput}
+              onChangeText={setInstructionInput}
+              placeholder="Thêm bước thực hiện..."
+              multiline
+              onSubmitEditing={() => {
+                if (instructionInput.trim()) {
+                  setInstructions([...instructions, instructionInput.trim()]);
+                  setInstructionInput('');
+                }
+              }}
+            />
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => {
+                if (instructionInput.trim()) {
+                  setInstructions([...instructions, instructionInput.trim()]);
+                  setInstructionInput('');
+                }
+              }}
+            >
+              <Icon name="plus" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          {instructions.map((item, index) => (
+            <View key={`instruction-${index}`} style={styles.listItem}>
+              <Text style={styles.stepNumber}>{index + 1}.</Text>
+              <Text style={styles.listItemText}>{item}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const newInstructions = [...instructions];
+                  newInstructions.splice(index, 1);
+                  setInstructions(newInstructions);
+                }}
+              >
+                <Icon name="times" size={20} color={colors.darkGray} />
+              </TouchableOpacity>
+            </View>
+          ))}
+
+          <Text style={styles.sectionTitle}>Hashtag</Text>
+          <View style={styles.ingredientInputRow}>
+            <TextInput
+              style={styles.ingredientInput}
+              value={hashtagInput}
+              onChangeText={setHashtagInput}
+              placeholder="Nhập hashtag cho bài viết..."
+              onSubmitEditing={() => {
+                if (hashtagInput.trim()) {
+                  // Remove # if user added it, and clean up the input
+                  const tag = hashtagInput.trim().replace(/^#/, '');
+                  if (tag && !hashtags.includes(tag)) {
+                    setHashtags([...hashtags, tag]);
+                    setHashtagInput('');
+                  }
+                }
+              }}
+            />
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => {
+                if (hashtagInput.trim()) {
+                  // Remove # if user added it, and clean up the input
+                  const tag = hashtagInput.trim().replace(/^#/, '');
+                  if (tag && !hashtags.includes(tag)) {
+                    setHashtags([...hashtags, tag]);
+                    setHashtagInput('');
+                  }
+                }
+              }}
+            >
+              <Icon name="plus" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          {hashtags.length > 0 && (
+            <View style={styles.hashtagsContainer}>
+              {hashtags.map((tag, index) => (
+                <View key={`hashtag-${index}`} style={styles.hashtagItem}>
+                  <Text style={styles.hashtagText}>#{tag}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const newHashtags = [...hashtags];
+                      newHashtags.splice(index, 1);
+                      setHashtags(newHashtags);
+                    }}
+                    style={styles.removeHashtagButton}
+                  >
+                    <Icon name="times" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  const renderReviewSection = () => {
+    return (
+
+      <View style={styles.reviewSection}>
+           <Text style={styles.sectionTitle}>Nội dung bài viết</Text>
+          <TextInput
+            style={styles.captionInput}
+            value={caption}
+            onChangeText={setCaption}
+            placeholder="Nhập nội dung ..."
+            multiline
+          />
+        {/* Food Name & Rating */}
+        <View style={styles.reviewHeader}>
+          <TextInput
+            style={styles.reviewTitleInput}
+            value={foodName}
+            onChangeText={setFoodName}
+            placeholder="Tên món ăn..."
+          />
+
+       
+
+          <View style={styles.ratingContainer}>
+            <Text style={styles.ratingLabel}>Đánh giá:</Text>
+            <View style={styles.ratingStars}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <TouchableOpacity
+                  key={`star-${star}`}
+                  onPress={() => setRating(star)}
+                >
+                  <Icon
+                    name={star <= rating ? 'star' : 'star-o'}
+                    size={30}
+                    color={star <= rating ? '#FFD700' : '#ccc'}
+                    style={styles.starIcon}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        {/* Price Input */}
+        <View style={styles.priceContainer}>
+          <Icon name="money" size={16} color={colors.darkGray} />
+          <TextInput
+            style={styles.priceInput}
+            value={price}
+            onChangeText={setPrice}
+            placeholder="Giá món ăn..."
+            keyboardType="numeric"
+          />
+          <Text style={styles.priceLabel}>đ</Text>
+        </View>
+
+        {/* Pros Section */}
+        <View style={styles.inputSection}>
+          <Text style={styles.sectionTitle}>✨ Điểm tốt</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.reviewInput}
+              value={proInput}
+              onChangeText={setProInput}
+              placeholder="Thêm điểm tốt..."
+              onSubmitEditing={() => {
+                if (proInput.trim()) {
+                  setPros([...pros, proInput.trim()]);
+                  setProInput('');
+                }
+              }}
+            />
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => {
+                if (proInput.trim()) {
+                  setPros([...pros, proInput.trim()]);
+                  setProInput('');
+                }
+              }}
+            >
+              <Icon name="plus" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          {pros.map((item, index) => (
+            <View key={`pro-${index}`} style={styles.listItem}>
+              <Icon name="plus-circle" size={16} color={colors.primary} style={{ marginTop: 4 }} />
+              <Text style={styles.listItemText}>{item}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const newPros = [...pros];
+                  newPros.splice(index, 1);
+                  setPros(newPros);
+                }}
+              >
+                <Icon name="times" size={20} color={colors.darkGray} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+
+        {/* Cons Section */}
+        <View style={styles.inputSection}>
+          <Text style={styles.sectionTitle}>⚠️ Điểm chưa tốt</Text>
+          <View style={styles.inputRow}>
+            <TextInput
+              style={styles.reviewInput}
+              value={conInput}
+              onChangeText={setConInput}
+              placeholder="Thêm điểm chưa tốt..."
+              onSubmitEditing={() => {
+                if (conInput.trim()) {
+                  setCons([...cons, conInput.trim()]);
+                  setConInput('');
+                }
+              }}
+            />
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => {
+                if (conInput.trim()) {
+                  setCons([...cons, conInput.trim()]);
+                  setConInput('');
+                }
+              }}
+            >
+              <Icon name="plus" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          {cons.map((item, index) => (
+            <View key={`con-${index}`} style={styles.listItem}>
+              <Icon name="minus-circle" size={16} color="#FF4C61" style={{ marginTop: 4 }} />
+              <Text style={styles.listItemText}>{item}</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  const newCons = [...cons];
+                  newCons.splice(index, 1);
+                  setCons(newCons);
+                }}
+              >
+                <Icon name="times" size={20} color={colors.darkGray} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
+
+        {/* Restaurant Information */}
+        <View style={styles.inputSection}>
+          <Text style={styles.sectionTitle}>🏪 Thông tin nhà hàng</Text>
+          <TextInput
+            style={styles.restaurantInput}
+            value={restaurantName}
+            onChangeText={setRestaurantName}
+            placeholder="Tên nhà hàng..."
+          />
+          <TextInput
+            style={[styles.restaurantInput, { marginTop: 8 }]}
+            value={restaurantAddress}
+            onChangeText={setRestaurantAddress}
+            placeholder="Địa chỉ..."
+          />
+          
+          <Text style={styles.sectionTitle}>Hashtag</Text>
+          <View style={styles.ingredientInputRow}>
+            <TextInput
+              style={styles.ingredientInput}
+              value={hashtags.join(' ')}
+              onChangeText={text => setHashtags(text.split(/\s+/).filter(Boolean))}
+              placeholder="Nhập hashtag cho bài viết..."
+              onSubmitEditing={() => {
+                // Already handled by onChangeText
+              }}
+            />
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => {
+                // Can be used to add a specific tag
+              }}
+            >
+              <Icon name="plus" size={20} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
+          {hashtags.length > 0 && (
+            <View style={styles.hashtagsContainer}>
+              {hashtags.map((tag, index) => (
+                <View key={`hashtag-${index}`} style={styles.hashtagItem}>
+                  <Text style={styles.hashtagText}>#{tag}</Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      const newHashtags = [...hashtags];
+                      newHashtags.splice(index, 1);
+                      setHashtags(newHashtags);
+                    }}
+                    style={styles.removeHashtagButton}
+                  >
+                    <Icon name="times" size={16} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  // Hàm renderPreview để hiển thị xem trước bài đăng
+  const renderPreview = () => {
+    switch (postType) {
+      case PostType.RECIPE:
+        // Logic render RecipePost ở đây
+        return null;
 
       case PostType.REVIEW:
         return (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Đánh giá món ăn</Text>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Tên món ăn</Text>
-              <TextInput
-                style={styles.input}
-                value={foodName}
-                onChangeText={setFoodName}
-                placeholder="Ví dụ: Phở bò tái nạm"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Đánh giá (1-5 sao)</Text>
-              <View style={styles.ratingContainer}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <TouchableOpacity 
-                    key={`star-${star}`}
-                    onPress={() => setRating(star)}
-                  >
-                    <Icon
-                      name={star <= rating ? 'star' : 'star-o'}
-                      size={30}
-                      color={star <= rating ? '#FFD700' : '#ccc'}
-                      style={{ marginHorizontal: 5 }}
-                    />
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Giá (nghìn VND)</Text>
-              <TextInput
-                style={styles.input}
-                value={price}
-                onChangeText={setPrice}
-                placeholder="Ví dụ: 75"
-                keyboardType="numeric"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Thông tin nhà hàng</Text>
-              <TextInput
-                style={styles.input}
-                value={restaurantName}
-                onChangeText={setRestaurantName}
-                placeholder="Tên nhà hàng"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Loại ẩm thực</Text>
-              <View style={styles.tagInputContainer}>
-                <TextInput
-                  style={styles.tagInput}
-                  value={cuisineInput}
-                  onChangeText={setCuisineInput}
-                  placeholder="Thêm loại ẩm thực"
-                  onSubmitEditing={addCuisine}
-                />
-                <TouchableOpacity style={styles.addButton} onPress={addCuisine}>
-                  <Icon name="plus" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-              <View style={styles.tagsContainer}>
-                {cuisineTypes.map((cuisine, index) => (
-                  <View key={`cuisine-${index}`} style={styles.tag}>
-                    <Text style={styles.tagText}>{cuisine}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const newCuisines = [...cuisineTypes];
-                        newCuisines.splice(index, 1);
-                        setCuisineTypes(newCuisines);
-                      }}
-                    >
-                      <Icon name="times" size={14} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Mức giá</Text>
-              <View style={styles.buttonGroup}>
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    priceRange === 'low' && styles.activeButton
-                  ]}
-                  onPress={() => setPriceRange('low')}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    priceRange === 'low' && styles.activeButtonText
-                  ]}>Rẻ</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    priceRange === 'medium' && styles.activeButton
-                  ]}
-                  onPress={() => setPriceRange('medium')}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    priceRange === 'medium' && styles.activeButtonText
-                  ]}>Trung bình</Text>
-                </TouchableOpacity>
-                
-                <TouchableOpacity
-                  style={[
-                    styles.button,
-                    priceRange === 'high' && styles.activeButton
-                  ]}
-                  onPress={() => setPriceRange('high')}
-                >
-                  <Text style={[
-                    styles.buttonText,
-                    priceRange === 'high' && styles.activeButtonText
-                  ]}>Cao</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Số điện thoại (tùy chọn)</Text>
-              <TextInput
-                style={styles.input}
-                value={phoneNumber}
-                onChangeText={setPhoneNumber}
-                placeholder="Ví dụ: 0912345678"
-                keyboardType="phone-pad"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Website (tùy chọn)</Text>
-              <TextInput
-                style={styles.input}
-                value={website}
-                onChangeText={setWebsite}
-                placeholder="Ví dụ: www.phohung.com"
-                keyboardType="url"
-              />
-            </View>
-
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Giờ mở cửa (tùy chọn)</Text>
-              <TextInput
-                style={styles.input}
-                value={openingHours}
-                onChangeText={setOpeningHours}
-                placeholder="Ví dụ: 7:00 - 22:00"
-              />
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Điểm tốt</Text>
-              <View style={styles.tagInputContainer}>
-                <TextInput
-                  style={styles.tagInput}
-                  value={proInput}
-                  onChangeText={setProInput}
-                  placeholder="Thêm điểm tốt"
-                  onSubmitEditing={addPro}
-                />
-                <TouchableOpacity style={styles.addButton} onPress={addPro}>
-                  <Icon name="plus" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.tagsContainer}>
-                {pros.map((pro, index) => (
-                  <View key={`pro-${index}`} style={[styles.tag, { backgroundColor: '#4CAF50' }]}>
-                    <Text style={styles.tagText}>{pro}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const newPros = [...pros];
-                        newPros.splice(index, 1);
-                        setPros(newPros);
-                      }}
-                    >
-                      <Icon name="times" size={14} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            </View>
-            
-            <View style={styles.inputContainer}>
-              <Text style={styles.inputLabel}>Điểm chưa tốt</Text>
-              <View style={styles.tagInputContainer}>
-                <TextInput
-                  style={styles.tagInput}
-                  value={conInput}
-                  onChangeText={setConInput}
-                  placeholder="Thêm điểm chưa tốt"
-                  onSubmitEditing={addCon}
-                />
-                <TouchableOpacity style={styles.addButton} onPress={addCon}>
-                  <Icon name="plus" size={16} color={colors.primary} />
-                </TouchableOpacity>
-              </View>
-              
-              <View style={styles.tagsContainer}>
-                {cons.map((con, index) => (
-                  <View key={`con-${index}`} style={[styles.tag, { backgroundColor: '#F44336' }]}>
-                    <Text style={styles.tagText}>{con}</Text>
-                    <TouchableOpacity
-                      onPress={() => {
-                        const newCons = [...cons];
-                        newCons.splice(index, 1);
-                        setCons(newCons);
-                      }}
-                    >
-                      <Icon name="times" size={14} color="#fff" />
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            </View>
-          </View>
+          <ReviewPost
+            reviewDetails={{
+              name: foodName,
+              rating: rating,
+              price: price ? parseFloat(price) : undefined,
+              pros: pros,
+              cons: cons,
+              restaurantInfo: {
+                name: restaurantName,
+                address: restaurantAddress
+              }
+            }}
+            caption={caption}
+            hashtags={hashtags}
+            category={selectedCategories.length > 0 ? selectedCategories[0] : undefined}
+            location={restaurantAddress ? {
+              name: restaurantName,
+              address: restaurantAddress
+            } : undefined}
+          />
         );
 
-      default: // General post
+      default:
         return null;
     }
   };
 
-  // Hiển thị màn hình yêu cầu đăng nhập nếu chưa xác thực
-  if (authChecked && !isAuthenticated) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.notAuthContainer}>
-          <Icon name="lock" size={60} color={colors.primary} style={styles.lockIcon} />
-          <Text style={styles.notAuthTitle}>Bạn chưa đăng nhập</Text>
-          <Text style={styles.notAuthMessage}>
-            Vui lòng đăng nhập để chia sẻ bài viết của bạn với cộng đồng.
-          </Text>
-          <TouchableOpacity
-            style={styles.loginButton}
-            onPress={() => {
-              navigation.dispatch(
-                CommonActions.reset({
-                  index: 0,
-                  routes: [{ name: 'Login' }],
-                })
-              );
-            }}
-          >
-            <Text style={styles.loginButtonText}>Đăng nhập</Text>
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  // Hiển thị loading khi đang kiểm tra trạng thái đăng nhập
-  if (!authChecked) {
-    return (
-      <View style={[styles.container, styles.centered]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
-  }
-
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.container}
-    >
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()}>
-          <Icon name="arrow-left" size={24} color={colors.text} />
-        </TouchableOpacity>
-        <Text style={styles.headerTitle}>Tạo bài viết</Text>
-        <TouchableOpacity onPress={handleCreatePost} disabled={loading}>
-          {loading ? (
-            <ActivityIndicator size="small" color={colors.primary} />
-          ) : (
-            <Icon name="check" size={24} color={colors.primary} />
-          )}
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={styles.scrollContainer}>
-        {/* Tab chọn loại bài đăng */}
-        <View style={styles.tabContainer}>
-          <PostTypeTab
-            title="Thông thường"
-            icon="photo"
-            active={postType === PostType.GENERAL}
-            onPress={() => setPostType(PostType.GENERAL)}
-          />
-          <PostTypeTab
-            title="Công thức"
-            icon="cutlery"
-            active={postType === PostType.RECIPE}
-            onPress={() => setPostType(PostType.RECIPE)}
-          />
-          <PostTypeTab
-            title="Đánh giá"
-            icon="star"
-            active={postType === PostType.REVIEW}
-            onPress={() => setPostType(PostType.REVIEW)}
-          />
-        </View>
-
-        {/* Phần chọn ảnh */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Ảnh/Video</Text>
-          <View style={styles.mediaButtonContainer}>
-            <TouchableOpacity style={styles.mediaButton} onPress={selectImages}>
-              <Icon name="image" size={20} color={colors.primary} />
-              <Text style={styles.mediaButtonText}>Chọn từ thư viện</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.mediaButton} onPress={openCamera}>
-              <Icon name="camera" size={20} color={colors.primary} />
-              <Text style={styles.mediaButtonText}>Chụp ảnh mới</Text>
-            </TouchableOpacity>
-          </View>
-
-          {selectedImages.length > 0 && (
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false} 
-              style={styles.imagesContainer}
-            >
-              {selectedImages.map((image, index) => (
-                <View key={`image-${index}`} style={styles.imageContainer}>
-                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-                  <TouchableOpacity
-                    style={styles.removeImageButton}
-                    onPress={() => {
-                      const newImages = [...selectedImages];
-                      newImages.splice(index, 1);
-                      setSelectedImages(newImages);
-                    }}
-                  >
-                    <Icon name="times-circle" size={22} color="#FF5252" />
-                  </TouchableOpacity>
+    <SafeAreaView style={styles.container}>
+      <AuthRequired authChecked={authChecked} isAuthenticated={isAuthenticated} message="Vui lòng đăng nhập để đăng bài">
+        <ScrollView style={styles.scrollContainer}>
+          <View style={styles.postContainer}>
+            {/* Post Header with User Info */}
+            <View style={styles.postHeader}>
+              <Image
+                source={
+                  userProfile.photoURL
+                    ? { uri: userProfile.photoURL }
+                    : require('../../assets/images/defaultuser.png')
+                }
+                style={styles.userAvatar}
+              />
+              <View style={styles.userInfo}>
+                <Text style={styles.username}>{userProfile.displayName || 'User'}</Text>
+                <View style={styles.postMetaRow}>
+                  <Text style={styles.postTime}>Đang tạo bài viết</Text>
+                  <Icon name="globe" size={12} color={colors.darkGray} style={{ marginLeft: 4 }} />
                 </View>
-              ))}
-            </ScrollView>
-          )}
-        </View>
-
-        {/* Phần nội dung bài viết */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Nội dung</Text>
-          <TextInput
-            style={[styles.input, styles.captionInput]}
-            multiline
-            numberOfLines={4}
-            value={caption}
-            onChangeText={setCaption}
-            placeholder="Mô tả bài viết của bạn..."
-          />
-        </View>
-
-        {/* Phần hashtags */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Hashtags</Text>
-          <View style={styles.tagInputContainer}>
-            <TextInput
-              style={styles.tagInput}
-              value={hashtagInput}
-              onChangeText={setHashtagInput}
-              placeholder="Thêm hashtag"
-              onSubmitEditing={addHashtag}
-            />
-            <TouchableOpacity style={styles.addButton} onPress={addHashtag}>
-              <Icon name="plus" size={16} color={colors.primary} />
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.tagsContainer}>
-            {hashtags.map((tag, index) => (
-              <View key={`hashtag-${index}`} style={styles.tag}>
-                <Text style={styles.tagText}>#{tag}</Text>
-                <TouchableOpacity
-                  onPress={() => {
-                    const newHashtags = [...hashtags];
-                    newHashtags.splice(index, 1);
-                    setHashtags(newHashtags);
-                  }}
-                >
-                  <Icon name="times" size={14} color="#fff" />
-                </TouchableOpacity>
               </View>
-            ))}
-          </View>
-        </View>
-
-        {/* Phần Categories */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Danh mục</Text>
-          <TouchableOpacity 
-            style={styles.categoryButton}
-            onPress={() => setCategoriesModalVisible(true)}
-          >
-            <Icon name="list" size={18} color={colors.primary} style={{ marginRight: 8 }} />
-            <Text style={styles.categoryButtonText}>
-              {selectedCategories.length > 0 
-                ? `${selectedCategories.length} danh mục đã chọn` 
-                : 'Chọn danh mục'}
-            </Text>
-            <Icon name="chevron-right" size={14} color="#777" style={{ marginLeft: 'auto' }} />
-          </TouchableOpacity>
-
-          {selectedCategories.length > 0 && (
-            <View style={styles.tagsContainer}>
-              {selectedCategories.map((category, index) => (
-                <View key={`category-${category.categoryId}`} style={[styles.tag, { backgroundColor: '#3F51B5' }]}>
-                  <Text style={styles.tagText}>{category.name}</Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      const newCategories = [...selectedCategories];
-                      newCategories.splice(index, 1);
-                      setSelectedCategories(newCategories);
-                    }}
-                  >
-                    <Icon name="times" size={14} color="#fff" />
-                  </TouchableOpacity>
-                </View>
-              ))}
             </View>
-          )}
-        </View>
 
-        {/* Phần địa điểm */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Địa điểm</Text>
-          <View style={styles.locationContainer}>
-            <Icon name="map-marker" size={20} color={colors.primary} style={{ marginRight: 8 }} />
-            <TextInput
-              style={[styles.input, { flex: 1 }]}
-              value={locationName}
-              onChangeText={setLocationName}
-              placeholder="Thêm địa điểm (tùy chọn)"
-            />
-          </View>
-        </View>
-        
-        {/* Phần input theo loại bài đăng */}
-        {renderPostTypeInputs()}
-      </ScrollView>
-
-      {/* Modal chọn categories */}
-      <Modal
-        visible={categoriesModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCategoriesModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Chọn danh mục</Text>
-              <TouchableOpacity onPress={() => setCategoriesModalVisible(false)}>
-                <Icon name="times" size={22} color="#777" />
+            {/* Post Type Selection */}
+            <View style={styles.typeContainer}>
+              <TouchableOpacity
+                style={[styles.typeButton, postType === PostType.GENERAL && styles.activeTypeButton]}
+                onPress={() => setPostType(PostType.GENERAL)}
+              >
+                <Icon name="file-text-o" size={16} color={postType === PostType.GENERAL ? '#fff' : colors.primary} />
+                <Text style={[styles.typeText, postType === PostType.GENERAL && styles.activeTypeText]}>
+                  Bài viết thường
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeButton, postType === PostType.RECIPE && styles.activeTypeButton]}
+                onPress={() => setPostType(PostType.RECIPE)}
+              >
+                <Icon name="cutlery" size={16} color={postType === PostType.RECIPE ? '#fff' : colors.primary} />
+                <Text style={[styles.typeText, postType === PostType.RECIPE && styles.activeTypeText]}>
+                  Công thức
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeButton, postType === PostType.REVIEW && styles.activeTypeButton]}
+                onPress={() => setPostType(PostType.REVIEW)}
+              >
+                <Icon name="star" size={16} color={postType === PostType.REVIEW ? '#fff' : colors.primary} />
+                <Text style={[styles.typeText, postType === PostType.REVIEW && styles.activeTypeText]}>
+                  Đánh giá
+                </Text>
               </TouchableOpacity>
             </View>
 
-            {loadingCategories ? (
-              <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 20 }} />
-            ) : (
-              <FlatList
-              data={categories.filter(cat => cat.type === postType)}  keyExtractor={(item) => item.categoryId}
-                renderItem={({ item }) => (
-                  <TouchableOpacity
-                    style={styles.categoryItem}
-                    onPress={() => toggleCategorySelection(item)}
-                  >
-                    <Text style={styles.categoryItemText}>{item.name}</Text>
-                    {item.description && (
-                      <Text style={styles.categoryItemDescription}>{item.description}</Text>
-                    )}
-                    <View style={styles.categoryCheckbox}>
-                      {selectedCategories.some(cat => cat.categoryId === item.categoryId) && (
-                        <Icon name="check" size={16} color={colors.primary} />
-                      )}
+            <View style={styles.content}>
+              {/* Media Section */}
+              <View style={styles.mediaSection}>
+                {selectedImages.length > 0 ? (
+                  <View style={styles.mediaContainer}>
+                    <Image source={{ uri: selectedImages[0].uri }} style={styles.mediaPreview} />
+                    <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                      <TouchableOpacity style={styles.mediaChangeButton} onPress={selectImages}>
+                        <Icon name="image" size={20} color="#fff" />
+                        <Text style={styles.mediaChangeText}>Chọn từ thư viện</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.mediaChangeButton, { marginLeft: 8 }]} onPress={() => {
+                        launchCamera({ mediaType: 'photo', quality: 0.8 }, (response) => {
+                          if (response.didCancel) return;
+                          if (response.errorCode) {
+                            Alert.alert('Lỗi', response.errorMessage || 'Không thể chụp ảnh');
+                            return;
+                          }
+                          if (response.assets) {
+                            setSelectedImages([...selectedImages, ...response.assets]);
+                          }
+                        });
+                      }}>
+                        <Icon name="camera" size={20} color="#fff" />
+                        <Text style={styles.mediaChangeText}>Chụp ảnh</Text>
+                      </TouchableOpacity>
                     </View>
-                  </TouchableOpacity>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row' }}>
+                    <TouchableOpacity style={styles.mediaAddButton} onPress={selectImages}>
+                      <Icon name="image" size={32} color={colors.primary} />
+                      <Text style={styles.mediaAddText}>Thêm ảnh</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.mediaAddButton, { marginLeft: 12 }]} onPress={() => {
+                      launchCamera({ mediaType: 'photo', quality: 0.8 }, (response) => {
+                        if (response.didCancel) return;
+                        if (response.errorCode) {
+                          Alert.alert('Lỗi', response.errorMessage || 'Không thể chụp ảnh');
+                          return;
+                        }
+                        if (response.assets) {
+                          setSelectedImages([...selectedImages, ...response.assets]);
+                        }
+                      });
+                    }}>
+                      <Icon name="camera" size={32} color={colors.primary} />
+                      <Text style={styles.mediaAddText}>Chụp ảnh</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
-              />
-            )}
+              </View>
 
-            <TouchableOpacity 
-              style={styles.modalButton}
-              onPress={() => setCategoriesModalVisible(false)}
-            >
-              <Text style={styles.modalButtonText}>Xác nhận</Text>
-            </TouchableOpacity>
+              {/* Image Preview Section */}
+              {selectedImages.length > 0 && (
+                <ScrollView horizontal style={styles.imagePreviewContainer}>
+                  {selectedImages.map((image, index) => (
+                    <View key={index} style={styles.imageWrapper}>
+                      <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                      <TouchableOpacity
+                        style={styles.deleteImageButton}
+                        onPress={() => {
+                          const updatedImages = [...selectedImages];
+                          updatedImages.splice(index, 1);
+                          setSelectedImages(updatedImages);
+                        }}
+                      >
+                        <Icon name="times-circle" size={24} color="red" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </ScrollView>
+              )}
+
+              {/* Post Type Specific Content */}
+              {postType === PostType.RECIPE && renderRecipeSection()}
+              {postType === PostType.REVIEW && renderReviewSection()}
+              {postType === PostType.GENERAL && (
+                <View style={styles.inputSection}>
+                  <Text style={styles.sectionTitle}>Cảm nghĩ của bạn..</Text>
+                  <TextInput
+                    style={styles.captionInput}
+                    value={caption}
+                    onChangeText={setCaption}
+                    placeholder="Nhập nội dung ..."
+                    multiline
+                  />
+                  <Text style={styles.sectionTitle}>Hashtag</Text>
+                  <View style={styles.ingredientInputRow}>
+                    <TextInput
+                      style={styles.ingredientInput}
+                      value={hashtagInput}
+                      onChangeText={setHashtagInput}
+                      placeholder="Nhập hashtag cho bài viết..."
+                      onSubmitEditing={() => {
+                        if (hashtagInput.trim()) {
+                          // Remove # if user added it, and clean up the input
+                          const tag = hashtagInput.trim().replace(/^#/, '');
+                          if (tag && !hashtags.includes(tag)) {
+                            setHashtags([...hashtags, tag]);
+                            setHashtagInput('');
+                          }
+                        }
+                      }}
+                    />
+                    <TouchableOpacity
+                      style={styles.addButton}
+                      onPress={() => {
+                        if (hashtagInput.trim()) {
+                          // Remove # if user added it, and clean up the input
+                          const tag = hashtagInput.trim().replace(/^#/, '');
+                          if (tag && !hashtags.includes(tag)) {
+                            setHashtags([...hashtags, tag]);
+                            setHashtagInput('');
+                          }
+                        }
+                      }}
+                    >
+                      <Icon name="plus" size={20} color={colors.primary} />
+                    </TouchableOpacity>
+                  </View>
+                  {hashtags.length > 0 && (
+                    <View style={styles.hashtagsContainer}>
+                      {hashtags.map((tag, index) => (
+                        <View key={`hashtag-${index}`} style={styles.hashtagItem}>
+                          <Text style={styles.hashtagText}>#{tag}</Text>
+                          <TouchableOpacity
+                            onPress={() => {
+                              const newHashtags = [...hashtags];
+                              newHashtags.splice(index, 1);
+                              setHashtags(newHashtags);
+                            }}
+                            style={styles.removeHashtagButton}
+                          >
+                            <Icon name="times" size={16} color="#fff" />
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {/* Category Select Button - chỉ xuất hiện 1 lần ở ngoài cùng */}
+              <Text style={styles.sectionTitle}>Danh mục</Text>
+              <TouchableOpacity
+                style={[
+                  styles.filterBtn,
+                  { flexDirection: 'row', alignItems: 'center', minWidth: 120, marginBottom: 8 },
+                  selectedCategories.length > 0 && styles.filterBtnActive
+                ]}
+                onPress={() => setCategoryModalVisible(true)}
+              >
+                <Text style={[
+                  styles.filterText,
+                  { flex: 1 },
+                  selectedCategories.length > 0 && { color: '#fff', fontWeight: 'bold' }
+                ]}>
+                  {selectedCategories.length > 0
+                    ? selectedCategories.map(c => c.name).join(', ')
+                    : 'Chọn danh mục'}
+                </Text>
+                <Icon
+                  name="chevron-down"
+                  size={14}
+                  color={selectedCategories.length > 0 ? '#fff' : '#888'}
+                  style={{ marginLeft: 6 }}
+                />
+              </TouchableOpacity>
+              <Modal
+                visible={categoryModalVisible}
+                transparent
+                animationType="fade"
+                onRequestClose={() => setCategoryModalVisible(false)}
+              >
+                <Pressable style={styles.modalOverlay} onPress={() => setCategoryModalVisible(false)}>
+                  <View style={styles.modalContent}>
+                    <Text style={styles.modalTitle}>Chọn danh mục</Text>
+                    <ScrollView style={{ maxHeight: 300 }}>
+                      {categories
+                        .filter(item => item.type === postType)
+                        .map((item: Category) => {
+                          const isSelected = selectedCategories.some(c => c.categoryId === item.categoryId);
+                          return (
+                            <TouchableOpacity
+                              key={item.categoryId}
+                              style={[
+                                styles.modalOption,
+                                isSelected && styles.modalOptionActive
+                              ]}
+                              onPress={() => {
+                                if (isSelected) {
+                                  setSelectedCategories(selectedCategories.filter(c => c.categoryId !== item.categoryId));
+                                } else {
+                                  setSelectedCategories([...selectedCategories, item]);
+                                }
+                              }}
+                            >
+                              <Text style={[
+                                styles.modalOptionText,
+                                isSelected && styles.modalOptionTextActive
+                              ]}>
+                                {item.name}
+                              </Text>
+                              {isSelected && <Icon name="check" size={18} color="#fff" style={{ position: 'absolute', right: 16, top: 12 }} />}
+                            </TouchableOpacity>
+                          );
+                        })}
+                    </ScrollView>
+                    <TouchableOpacity
+                      style={{ marginTop: 16, backgroundColor: colors.primary, borderRadius: 8, padding: 12, alignItems: 'center' }}
+                      onPress={() => setCategoryModalVisible(false)}
+                    >
+                      <Text style={{ color: '#fff', fontWeight: 'bold' }}>Xong</Text>
+                    </TouchableOpacity>
+                  </View>
+                </Pressable>
+              </Modal>
+
+              {/* Submit Button */}
+              <TouchableOpacity
+                style={[styles.submitButton, !isFormValid() && styles.submitButtonDisabled]}
+                onPress={handleCreatePost}
+                disabled={!isFormValid() || loading}
+              >
+                <Text style={styles.submitButtonText}>
+                  {loading ? 'Đang đăng...' : 'Đăng bài'}
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
-
-      {loading && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Đang đăng bài...</Text>
-        </View>
-      )}
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </AuthRequired>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  tab: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    backgroundColor: '#F8F9FA',
+    marginHorizontal: 4,
+  },
+  previewType: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  activeTab: {
+    backgroundColor: colors.primary,
+  },
+  tabText: {
+    marginLeft: 8,
+    fontSize: 15,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  activeTabText: {
+    color: '#fff',
+  },
   container: {
     flex: 1,
     backgroundColor: colors.background,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    backgroundColor: colors.background,
-  },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
   scrollContainer: {
     flex: 1,
   },
-  tabContainer: {
+  postContainer: {
+    backgroundColor: '#fff',
+    marginHorizontal: 12,
+    marginVertical: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    overflow: 'hidden',
+  },
+  postHeader: {
     flexDirection: 'row',
-    paddingHorizontal: 8,
-    paddingVertical: 12,
+    alignItems: 'center',
+    padding: 16,
+    backgroundColor: '#F8F9FA',
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
-    backgroundColor: colors.background,
   },
-  tab: {
+  userAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    marginRight: 12,
+    backgroundColor: colors.lightGray,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  userInfo: {
     flex: 1,
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 2,
-    borderBottomColor: 'transparent',
   },
-  activeTab: {
-    borderBottomColor: colors.primary,
-  },
-  tabText: {
-    fontSize: 12,
-    color: colors.darkGray,
-    marginTop: 4,
-  },
-  activeTabText: {
-    color: colors.primary,
-    fontWeight: 'bold',
-  },
-  section: {
-    padding: 16,
-    borderBottomWidth: 8,
-    borderBottomColor: '#f0f0f0',
-  },
-  sectionTitle: {
+  username: {
     fontSize: 16,
     fontWeight: 'bold',
-    marginBottom: 12,
     color: colors.text,
+    marginBottom: 2,
   },
-  mediaButtonContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 16,
-  },
-  mediaButton: {
+  postMetaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    padding: 12,
-    borderRadius: 8,
-    flex: 1,
-    marginHorizontal: 8,
-    justifyContent: 'center',
   },
-  mediaButtonText: {
+  postTime: {
+    fontSize: 13,
+    color: colors.darkGray,
+  },
+  typeContainer: {
+    flexDirection: 'row',
+    padding: 12,
+    justifyContent: 'space-around',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  typeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    backgroundColor: '#F8F9FA',
+  },
+  activeTypeButton: {
+    backgroundColor: colors.primary,
+  },
+  typeText: {
     marginLeft: 8,
+    fontSize: 14,
+    color: colors.primary,
+  },
+  activeTypeText: {
+    color: '#fff',
+  },
+  content: {
+    padding: 16,
+  },
+  captionInput: {
+    fontSize: 16,
     color: colors.text,
+    paddingTop: 0,
+    paddingBottom: 12,
+    minHeight: 80,
+  },
+  mediaSection: {
+    marginVertical: 12,
+  },
+  mediaContainer: {
+    position: 'relative',
+  },
+  mediaPreview: {
+    width: '100%',
+    height: 300,
+    borderRadius: 12,
+  },
+  mediaChangeButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  mediaChangeText: {
+    color: '#fff',
+    marginLeft: 8,
     fontSize: 14,
   },
-  imagesContainer: {
+  mediaAddButton: {
     flexDirection: 'row',
-    marginVertical: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F8F9FA',
+    padding: 20,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#f0f0f0',
+    borderStyle: 'dashed',
   },
-  imageContainer: {
+  mediaAddText: {
+    marginLeft: 12,
+    fontSize: 16,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  // Recipe section styles
+  recipeSection: {
+    marginTop: 16,
+  },
+  recipeHeader: {
+    backgroundColor: '#F8F9FA',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  recipeTitleInput: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  metaRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  metaItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  metaInput: {
+    fontSize: 16,
+    color: colors.text,
+    width: 40,
+    textAlign: 'center',
+    marginHorizontal: 8,
+  },
+  metaLabel: {
+    fontSize: 14,
+    color: colors.darkGray,
+  },
+  inputSection: {
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+  },
+  ingredientInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  ingredientInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginRight: 8,
+  },
+  instructionInputRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 8,
+  },
+  instructionInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginRight: 8,
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  addButton: {
+    width: 40,
+    height: 40,
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  listItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#fff',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  listItemText: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.text,
+    marginLeft: 12,
+    marginRight: 12,
+  },
+  stepNumber: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+    width: 30,
+  },
+  submitButton: {
+    backgroundColor: colors.primary,
+    padding: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  reviewSection: {
+    marginTop: 16,
+  },
+  reviewHeader: {
+    backgroundColor: '#F8F9FA',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  reviewTitleInput: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 16,
+  },
+  ratingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  ratingLabel: {
+    fontSize: 16,
+    color: colors.text,
+    marginRight: 12,
+  },
+  ratingStars: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  starIcon: {
+    marginHorizontal: 4,
+  },
+  priceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+  },
+  priceInput: {
+    flex: 1,
+    fontSize: 18,
+    color: colors.text,
+    marginLeft: 12,
+    marginRight: 8,
+  },
+  priceLabel: {
+    fontSize: 16,
+    color: colors.darkGray,
+  },
+  inputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  reviewInput: {
+    flex: 1,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+    marginRight: 8,
+  },
+  restaurantInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+  },
+  imagePreviewContainer: {
+    flexDirection: 'row',
+    marginTop: 12,
+    marginBottom: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    backgroundColor: '#F8F9FA',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  imageWrapper: {
     position: 'relative',
+    borderRadius: 12,
+    overflow: 'hidden',
     marginRight: 8,
   },
   imagePreview: {
     width: 100,
     height: 100,
-    borderRadius: 8,
+    borderRadius: 12,
   },
-  removeImageButton: {
+  deleteImageButton: {
     position: 'absolute',
     top: 4,
     right: 4,
-    backgroundColor: 'white',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderRadius: 12,
+    padding: 4,
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 12,
-    color: colors.text,
-    backgroundColor: '#fff',
-  },
-  captionInput: {
-    height: 120,
-    textAlignVertical: 'top',
-  },
-  tagInputContainer: {
+  categorySelector: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
-  },
-  tagInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 10,
     backgroundColor: '#fff',
-  },
-  addButton: {
-    padding: 10,
-    marginLeft: 8,
-    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
     borderRadius: 8,
-  },
-  addButtonText: {
-    color: colors.primary,
-    fontWeight: 'bold',
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     marginTop: 8,
   },
-  tag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 16,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    margin: 4,
-  },
-  tagText: {
-    color: '#fff',
-    marginRight: 6,
-  },
-  locationContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    color: '#fff',
-    marginTop: 10,
-  },
-  rowContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    fontSize: 14,
-    color: colors.text,
-    marginBottom: 6,
-  },
-  buttonGroup: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  button: {
+  categorySelectorText: {
     flex: 1,
-    backgroundColor: '#f0f0f0',
-    padding: 10,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginHorizontal: 4,
-  },
-  activeButton: {
-    backgroundColor: colors.primary,
-  },
-  buttonText: {
+    fontSize: 16,
     color: colors.text,
   },
-  activeButtonText: {
-    color: '#fff',
-  },
-  ratingContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    marginVertical: 8,
-  },
-  instructionsContainer: {
-    marginTop: 16,
-  },
-  instruction: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
-  },
-  instructionNumber: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: colors.primary,
-    color: '#fff',
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    fontSize: 14,
-    fontWeight: 'bold',
-    marginRight: 10,
-  },
-  instructionText: {
-    flex: 1,
-    color: colors.text,
-  },
-  categoryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  categoryButtonText: {
-    color: colors.text,
-    fontSize: 14,
-  },
+  // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+
   },
   modalContainer: {
     width: '90%',
     maxHeight: '80%',
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    overflow: 'hidden',
+
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 12,
+    padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+    borderBottomColor: '#f0f0f0',
+
   },
   modalTitle: {
     fontSize: 18,
@@ -1276,76 +1474,105 @@ const styles = StyleSheet.create({
   },
   categoryItem: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
+    padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
   },
   categoryItemText: {
-    flex: 1,
     fontSize: 16,
     color: colors.text,
   },
-  categoryItemDescription: {
-    fontSize: 12,
-    color: '#888',
-    marginTop: 4,
-  },
-  categoryCheckbox: {
-    width: 24,
-    height: 24,
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 12,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    padding: 14,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  modalButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  notAuthContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  emptyList: {
     padding: 20,
+    alignItems: 'center',
   },
-  lockIcon: {
-    marginBottom: 20,
-  },
-  notAuthTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 10,
-  },
-  notAuthMessage: {
+  emptyListText: {
     fontSize: 16,
     color: colors.darkGray,
-    textAlign: 'center',
-    marginBottom: 30,
   },
-  loginButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 40,
-    paddingVertical: 12,
+  filterBtn: {
+    backgroundColor: colors.background,
+    borderWidth: 1,
     borderRadius: 8,
+    borderColor: colors.lightGray,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 4,
+    height: 50,
   },
-  loginButtonText: {
+  filterBtnActive: {
+    backgroundColor: colors.primary || '#FF4C61',
+  },
+  filterText: {
+    color: '#333',
+    fontSize: 14,
+  },
+  filterTextActive: {
     color: '#fff',
-    fontSize: 16,
     fontWeight: 'bold',
   },
-  centered: {
-    justifyContent: 'center',
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    minWidth: 260,
+    elevation: 5,
+    alignItems: 'stretch',
+  },
+  modalOption: {
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  modalOptionActive: {
+    backgroundColor: colors.primary || '#FF4C61',
+  },
+  modalOptionText: {
+    fontSize: 16,
+    color: '#333',
+    textAlign: 'center',
+  },
+  modalOptionTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  categoryScrollContainer: {
+    flex: 1,
+  },
+  categoryScrollContent: {
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  hashtagsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 8,
+  },
+  hashtagItem: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    margin: 4,
+  },
+  hashtagText: {
+    color: '#fff',
+    marginRight: 5,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  removeHashtagButton: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

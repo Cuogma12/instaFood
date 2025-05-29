@@ -1,47 +1,58 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  FlatList, 
-  Image, 
-  TouchableOpacity, 
-  ActivityIndicator, 
-  RefreshControl 
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Image,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl
 } from 'react-native';
 import { colors } from '../../utils/colors';
 import { getNotificationsForCurrentUser, markAllNotificationsAsRead, Notification } from '../../services/notificationServices';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../types/stackparamlist';
 import { formatTimeAgo } from '../../utils/dateUtils';
+import useAuth from '../../hooks/useAuth';
+import AuthRequired from '../../components/auth/AuthRequired';
 import 'moment/locale/vi';
 
 const NotificationItem = ({ notification }: { notification: Notification }) => {
   const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-  
+
   // Format thời gian hiển thị sử dụng hàm tiện ích
   const formattedTime = formatTimeAgo(notification.createdAt);
-  
   // Xử lý khi người dùng nhấn vào thông báo
-  const handlePress = () => {
-    // Đối với thông báo có liên quan đến bài đăng
-    if (notification.postId) {
-      // Điều hướng đến màn hình chi tiết bài đăng
-      navigation.navigate('PostDetail', { postId: notification.postId });
-    }
-    
-    // Đối với thông báo follow, có thể điều hướng đến trang profile người đó
-    if (notification.type === 'follow') {
-      // navigation.navigate('OtherProfile', { userId: notification.senderId });
+  const handlePress = async () => {
+    try {
+      // Mark the notification as read if it's not already
+      if (!notification.read && notification.id) {
+        const { markNotificationAsRead } = require('../../services/notificationServices');
+        await markNotificationAsRead(notification.id);
+      }
+      
+      // Đối với thông báo có liên quan đến bài đăng
+      if (notification.postId) {
+        // Điều hướng đến màn hình chi tiết bài đăng
+        navigation.navigate('PostDetail', { postId: notification.postId });
+      }
+
+      // Đối với thông báo follow, có thể điều hướng đến trang profile người đó
+      if (notification.type === 'follow') {
+        // navigation.navigate('OtherProfile', { userId: notification.senderId });
+      }
+    } catch (error) {
+      console.error('Error handling notification press:', error);
     }
   };
-  
+
   // Xác định icon và màu sắc dựa trên loại thông báo
   let iconName = 'bell';
   let iconColor = colors.primary;
-  
+
   switch (notification.type) {
     case 'like':
       iconName = 'heart';
@@ -64,22 +75,22 @@ const NotificationItem = ({ notification }: { notification: Notification }) => {
       iconColor = '#2196F3';
       break;
   }
-  
+
   return (
-    <TouchableOpacity 
+    <TouchableOpacity
       style={[
-        styles.notificationItem, 
+        styles.notificationItem,
         !notification.read && styles.unreadNotification
-      ]} 
+      ]}
       onPress={handlePress}
     >
-      <Image 
-        source={{ 
-          uri: notification.senderAvatar || 'https://via.placeholder.com/50'
-        }} 
-        style={styles.avatar} 
+      <Image
+        source={{
+          uri: notification.senderAvatar || require('../../assets/images/defaultuser.png')
+        }}
+        style={styles.avatar}
       />
-      
+
       <View style={styles.notificationContent}>
         <View style={styles.notificationHeader}>
           <Text style={styles.username}>
@@ -87,19 +98,19 @@ const NotificationItem = ({ notification }: { notification: Notification }) => {
           </Text>
           <Text style={styles.time}>{formattedTime}</Text>
         </View>
-        
+
         <Text style={styles.message}>
           {notification.message}
         </Text>
       </View>
-      
+
       {notification.postImage && (
-        <Image 
-          source={{ uri: notification.postImage }} 
-          style={styles.postThumbnail} 
+        <Image
+          source={{ uri: notification.postImage }}
+          style={styles.postThumbnail}
         />
       )}
-      
+
       {!notification.postImage && (
         <View style={[styles.iconContainer, { backgroundColor: iconColor + '20' }]}>
           <Icon name={iconName} size={18} color={iconColor} />
@@ -110,15 +121,21 @@ const NotificationItem = ({ notification }: { notification: Notification }) => {
 };
 
 export default function ActivityScreen() {
+  // Get authentication state
+  const { isAuthenticated, authChecked, user } = useAuth();
+  const isFocused = useIsFocused();
+
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
-  // Lấy danh sách thông báo khi màn hình được tải
+
+  // Lấy danh sách thông báo khi màn hình được tải hoặc được focus
   useEffect(() => {
-    fetchNotifications();
-  }, []);
-  
+    if (isAuthenticated && isFocused) {
+      fetchNotifications();
+    }
+  }, [isAuthenticated, isFocused]);
+
   // Hàm lấy danh sách thông báo
   const fetchNotifications = async () => {
     setLoading(true);
@@ -131,14 +148,14 @@ export default function ActivityScreen() {
       setLoading(false);
     }
   };
-  
+
   // Xử lý kéo xuống để làm mới
   const handleRefresh = async () => {
     setRefreshing(true);
     await fetchNotifications();
     setRefreshing(false);
   };
-  
+
   // Xử lý đánh dấu tất cả là đã đọc
   const handleMarkAllAsRead = async () => {
     try {
@@ -154,7 +171,7 @@ export default function ActivityScreen() {
       console.error('Error marking all notifications as read:', error);
     }
   };
-  
+
   // Hiển thị khi đang tải
   if (loading && !refreshing) {
     return (
@@ -163,7 +180,7 @@ export default function ActivityScreen() {
       </View>
     );
   }
-  
+
   // Hiển thị khi không có thông báo nào
   const renderEmptyComponent = () => (
     <View style={styles.emptyContainer}>
@@ -174,34 +191,35 @@ export default function ActivityScreen() {
       </Text>
     </View>
   );
-  
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        {notifications.length > 0 && (
-          <TouchableOpacity
-            style={styles.markReadButton}
-            onPress={handleMarkAllAsRead}
-          >
-            <Text style={styles.markReadText}>Đánh dấu tất cả đã đọc</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-      
-      <FlatList
-        data={notifications}
-        keyExtractor={(item) => item.id || Math.random().toString()}
-        renderItem={({ item }) => <NotificationItem notification={item} />}
-        contentContainerStyle={styles.listContainer}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={[colors.primary]}
-          />
-        }
-        ListEmptyComponent={renderEmptyComponent}
-      />
+      <AuthRequired authChecked={authChecked} isAuthenticated={isAuthenticated} message="Vui lòng đăng nhập để xem thông báo">
+        <View style={styles.header}>
+          {notifications.length > 0 && (
+            <TouchableOpacity
+              style={styles.markReadButton}
+              onPress={handleMarkAllAsRead}
+            >
+              <Text style={styles.markReadText}>Đánh dấu tất cả đã đọc</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <FlatList
+          data={notifications}
+          keyExtractor={(item) => item.id || Math.random().toString()}
+          renderItem={({ item }) => <NotificationItem notification={item} />}
+          contentContainerStyle={styles.listContainer}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={[colors.primary]}
+            />
+          }
+          ListEmptyComponent={renderEmptyComponent}
+        />
+      </AuthRequired>
     </View>
   );
 }

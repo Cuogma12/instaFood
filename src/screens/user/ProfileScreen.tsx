@@ -9,7 +9,9 @@ import {
   Dimensions,
   FlatList,
   ActivityIndicator,
-  Modal
+  Modal,
+  Share,
+  Alert
 } from 'react-native';
 import { colors } from '../../utils/colors';
 import Icon from 'react-native-vector-icons/FontAwesome';
@@ -24,7 +26,8 @@ import useAuth from '../../hooks/useAuth';
 import AuthRequired from '../../components/auth/AuthRequired';
 import RecipePost from '../../components/user/RecipePost';
 import ReviewPost from '../../components/user/ReviewPost';
-import { getFavoritePostsDetails } from '../../services/postServices';
+import { getFavoritePostsDetails, toggleFavoritePost, isPostFavorited } from '../../services/postServices';
+import { usePostContext } from '../../components/context/PostContext';
 
 const { width } = Dimensions.get('window');
 const ITEM_WIDTH = width / 3;
@@ -38,6 +41,7 @@ type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList> & {
 export default function ProfileScreen() {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
   const { isAuthenticated, authChecked, user } = useAuth();
+  const { likedPosts, likeCounts, toggleLike, initializePostStates } = usePostContext();
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<ProfilePost[]>([]);
   const [favoritePosts, setFavoritePosts] = useState<ProfilePost[]>([]);
@@ -48,6 +52,7 @@ export default function ProfileScreen() {
   const [viewMode, setViewMode] = useState<'detail' | 'feed'>('detail'); // Chế độ xem: chi tiết hoặc feed
   const [initialScrollIndex, setInitialScrollIndex] = useState(0); // Vị trí scroll ban đầu trong FlatList
   const [activeTab, setActiveTab] = useState<'posts' | 'favorites'>('posts'); // Tab đang hiển thị: bài đăng hoặc yêu thích
+  const [favoriteStates, setFavoriteStates] = useState<{ [key: string]: boolean }>({});
   const db = getFirestore();
 
   const fetchUserData = async () => {
@@ -144,6 +149,47 @@ export default function ProfileScreen() {
       fetchFavoritePosts();
     }
   }, [activeTab, user]);
+
+  // Initialize favoriteStates for posts in modal feed
+  useEffect(() => {
+    const initializeFavorites = async () => {
+      let allPosts = activeTab === 'posts' ? posts : favoritePosts;
+      const states: { [key: string]: boolean } = {};
+      for (const post of allPosts) {
+        try {
+          states[post.id] = await isPostFavorited(post.id);
+        } catch (e) {
+          states[post.id] = false;
+        }
+      }
+      setFavoriteStates(states);
+    };
+    if (modalVisible && viewMode === 'feed') {
+      initializeFavorites();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modalVisible, viewMode, posts, favoritePosts, activeTab]);
+
+  // Handle favorite/bookmark toggle
+  const handleFavorite = async (postId: string) => {
+    try {
+      const current = favoriteStates[postId] || false;
+      await toggleFavoritePost(postId, !current);
+      setFavoriteStates((prev) => ({ ...prev, [postId]: !current }));
+    } catch (error) {
+      Alert.alert('Lỗi', 'Không thể cập nhật trạng thái yêu thích.');
+    }
+  };
+
+  // Handle share
+  const handleShare = async (item: any) => {
+    try {
+      const message = `${item.caption?.substring(0, 50) || ''}\n${item.mediaUrls && item.mediaUrls[0] ? item.mediaUrls[0] : ''}`;
+      await Share.share({ message });
+    } catch (error) {
+      Alert.alert('Lỗi', 'Không thể chia sẻ bài viết.');
+    }
+  };
 
   const navigateToCreatePost = () => {
     navigation.navigate('MainApp', { screen: 'CreatePost' });
@@ -264,21 +310,52 @@ export default function ProfileScreen() {
           />
         )}
 
-        {/* Caption */}
+        {/* Caption (giới hạn 2 dòng) */}
         <View style={styles.modalPostCaption}>
-          <Text style={styles.modalPostText}>{item.caption}</Text>
+          <Text style={styles.modalPostText} numberOfLines={2} ellipsizeMode="tail">
+            {item.caption}
+          </Text>
         </View>
 
-        {/* Nút tương tác */}
+        {/* Nút tương tác đồng bộ với HomeScreen */}
         <View style={styles.modalPostActions}>
-          <TouchableOpacity style={styles.modalPostAction}>
-            <Icon name="heart-o" size={20} color={colors.text} />
+          <TouchableOpacity 
+            style={styles.modalPostAction}
+            onPress={() => toggleLike(item.id)}
+          >
+            <Icon 
+              name={likedPosts[item.id] ? 'heart' : 'heart-o'} 
+              size={20} 
+              color={likedPosts[item.id] ? '#FF4C61' : colors.text} 
+            />
+            <Text style={{ marginLeft: 4, fontSize: 14, color: likedPosts[item.id] ? '#FF4C61' : colors.text, fontWeight: likedPosts[item.id] ? 'bold' : 'normal' }}>
+              {likeCounts[item.id] || 0}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.modalPostAction}>
-            <Icon name="comment-o" size={20} color={colors.text} />
+          <TouchableOpacity 
+            style={styles.modalPostAction}
+            onPress={() => navigation.navigate('PostDetail', { postId: item.id })}
+          >
+            <Icon name="comment-o" size={20} color={colors.primary} />
+            <Text style={{ marginLeft: 4, fontSize: 14, color: colors.primary, fontWeight: 'bold' }}>
+              {item.commentCount || 0}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.modalPostAction}>
+          <TouchableOpacity 
+            style={styles.modalPostAction}
+            onPress={() => handleShare(item)}
+          >
             <Icon name="share" size={20} color={colors.text} />
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.modalPostAction}
+            onPress={() => handleFavorite(item.id)}
+          >
+            <Icon 
+              name={favoriteStates && favoriteStates[item.id] ? 'bookmark' : 'bookmark-o'} 
+              size={20} 
+              color={favoriteStates && favoriteStates[item.id] ? '#FFD700' : colors.primary} 
+            />
           </TouchableOpacity>
         </View>
 
@@ -465,7 +542,7 @@ export default function ProfileScreen() {
                   {/* Nội dung bài đăng */}
                   <View style={styles.postContent}>
                     {/* Hiển thị nội dung theo loại bài đăng */}
-                    {selectedPost.postType === 'normal' && (
+                    {selectedPost.postType === 'general' && (
                       <Text style={styles.caption}>{selectedPost.caption}</Text>
                     )}
 
@@ -484,7 +561,6 @@ export default function ProfileScreen() {
                       <ReviewPost 
                         reviewDetails={selectedPost.reviewDetails} 
                         caption={selectedPost.caption}
-                        location={selectedPost.location}
                       />
                     )}
 

@@ -1,46 +1,37 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, ActivityIndicator, RefreshControl, Modal, Alert } from 'react-native';
 import { colors } from '../../utils/colors';
-import { getPosts, toggleLikePost, isPostLiked, isPostFavorited, toggleFavoritePost } from '../../services/postServices';
+import { getPosts, isPostFavorited, toggleFavoritePost } from '../../services/postServices';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import moment from 'moment';
 import 'moment/locale/vi';
 import RecipePost from '../../components/user/RecipePost';
 import ReviewPost from '../../components/user/ReviewPost';
 import { getAuth } from '@react-native-firebase/auth';
-import { getFirestore, collection, doc, updateDoc, arrayUnion, arrayRemove } from '@react-native-firebase/firestore';
-import { useNavigation } from '@react-navigation/native';
+import { getFirestore, doc, updateDoc, arrayUnion, arrayRemove, getDoc } from '@react-native-firebase/firestore';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { RootStackParamList } from '../../types/stackparamlist';
+import { usePostContext } from '../../components/context/PostContext';
 
 function PostItem({ post }: { post: any }) {
+  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
   const [isFavorite, setIsFavorite] = React.useState(false);
-  const [isLiked, setIsLiked] = React.useState(false);
-  const [likeCount, setLikeCount] = React.useState<number>(post.likes ? post.likes.length : 0);
   const [isVisible, setIsVisible] = React.useState(true);
   const [showFullCaption, setShowFullCaption] = React.useState(false);
   const [showLoginModal, setShowLoginModal] = React.useState(false);
-  const CAPTION_LIMIT = 150; // Tăng giới hạn ký tự lên 150
+  const CAPTION_LIMIT = 150;
+  
+  // Use the post context for likes
+  const { likedPosts, likeCounts, toggleLike } = usePostContext();
 
   moment.locale('vi');
 
-  const navigation = useNavigation<StackNavigationProp<RootStackParamList>>();
-
-  // Kiểm tra trạng thái like và favorite khi component được tạo
+  // Handle post press to navigate to detail
+  const handlePostPress = () => {
+    navigation.navigate('PostDetail', { postId: post.id });
+  };  // Kiểm tra trạng thái like và favorite khi component được tạo
   React.useEffect(() => {
-    // Kiểm tra xem người dùng hiện tại đã like bài đăng chưa
-    const checkLikeStatus = async () => {
-      try {
-        const currentUser = getAuth().currentUser;
-        if (currentUser && post.likes) {
-          const userLiked = post.likes.includes(currentUser.uid);
-          setIsLiked(userLiked);
-        }
-      } catch (error) {
-        console.error("Error checking like status:", error);
-      }
-    };
-    
     // Kiểm tra xem bài đăng có được yêu thích không
     const checkFavoriteStatus = async () => {
       try {
@@ -51,11 +42,10 @@ function PostItem({ post }: { post: any }) {
       }
     };
     
-    checkLikeStatus();
     checkFavoriteStatus();
-  }, [post.id, post.likes]);
-
-  // Xử lý khi người dùng nhấn nút like
+    
+    // Note: We don't need to check like status here anymore as it's handled by the PostContext
+  }, [post.id]);  // Xử lý khi người dùng nhấn nút like - Using PostContext now
   const handleLike = async () => {
     try {
       const currentUser = getAuth().currentUser;
@@ -64,27 +54,12 @@ function PostItem({ post }: { post: any }) {
         return; // Người dùng chưa đăng nhập
       }
       
-      const postRef = doc(getFirestore(), 'Posts', post.id);
+      // Use the toggleLike function from context to handle the like operation
+      await toggleLike(post.id);
       
-      // Cập nhật mảng likes trong bài đăng
-      if (isLiked) {
-        // Xóa like
-        await updateDoc(postRef, {
-          likes: arrayRemove(currentUser.uid)
-        });
-        setLikeCount(prevCount => prevCount - 1);
-      } else {
-        // Thêm like
-        await updateDoc(postRef, {
-          likes: arrayUnion(currentUser.uid)
-        });
-        setLikeCount(prevCount => prevCount + 1);
-      }
-      
-      // Cập nhật state
-      setIsLiked(!isLiked);
     } catch (error) {
       console.error("Error toggling like:", error);
+      Alert.alert("Lỗi", "Không thể thực hiện thao tác này");
     }
   };
 
@@ -172,25 +147,31 @@ function PostItem({ post }: { post: any }) {
       {post.hashtags && post.hashtags.length > 0 && (
         <Text style={styles.hashtag}>#{post.hashtags[0]}</Text>
       )}
-      {/* Image */}
-      {post.mediaUrls && post.mediaUrls.length > 0 && (
-        <Image source={{ uri: post.mediaUrls[0] }} style={styles.postImage} resizeMode="cover" />
-      )}
+      <TouchableOpacity onPress={handlePostPress}>
+        {/* Image */}
+        {post.mediaUrls && post.mediaUrls.length > 0 && (
+          <Image source={{ uri: post.mediaUrls[0] }} style={styles.postImage} resizeMode="cover" />
+        )}
+      </TouchableOpacity>
       {/* Action bar */}
       <View style={styles.actionBar}>
         <TouchableOpacity style={styles.actionBtn} onPress={handleLike}>
-          <Icon name={isLiked ? 'heart' : 'heart-o'} size={22} color="#FF4C61" />
-          <Text style={[styles.actionText, { color: '#FF4C61', fontWeight: 'bold' }]}>{likeCount}</Text>
+          <Icon name={likedPosts[post.id] ? 'heart' : 'heart-o'} size={22} color="#FF4C61" />
+          <Text style={[styles.actionText, { color: '#FF4C61', fontWeight: 'bold' }]}>{likeCounts[post.id] || 0}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn}>
+        <TouchableOpacity style={styles.actionBtn} onPress={handlePostPress}>
           <Icon name="comment-o" size={22} color={colors.primary} />
           <Text style={[styles.actionText, { color: colors.primary, fontWeight: 'bold' }]}>{post.commentCount || 0}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn}>
           <Icon name="share" size={22} color={colors.text} />
+          {/* Always wrap any text or space in <Text> */}
+          <Text style={[styles.actionText, { color: colors.text }]}>{' '}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.actionBtn1} onPress={handleFavorite}>
           <Icon name={isFavorite ? 'bookmark' : 'bookmark-o'} size={22} color={isFavorite ? '#FFD700' : colors.primary} />
+          {/* Always wrap any text or space in <Text> */}
+          <Text style={[styles.actionText, { color: isFavorite ? '#FFD700' : colors.primary }]}>{' '}</Text>
         </TouchableOpacity>
       </View>
       {/* Modal thông báo đăng nhập */}
@@ -210,7 +191,7 @@ function PostItem({ post }: { post: any }) {
             </TouchableOpacity>
             <Icon name="exclamation-circle" size={40} color={colors.primary} style={styles.modalIcon} />
             <Text style={styles.modalTitle}>Yêu cầu đăng nhập</Text>
-            <Text style={styles.modalText}>Vui lòng đăng nhập để thích và lưu bài viết vào mục yêu thích.</Text>
+            <Text style={styles.modalText}>Vui lòng đăng nhập để tương tác với bài đăng.</Text>
             <TouchableOpacity
               style={styles.modalButton}
               onPress={() => {
@@ -230,25 +211,50 @@ function PostItem({ post }: { post: any }) {
 export default function HomeScreen() {
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false); // Thêm state cho refresh
+  const [refreshing, setRefreshing] = useState(false);
+  const navigation = useNavigation();
+  const { initializePostStates } = usePostContext();
 
-  const fetchPosts = async () => {
-    setLoading(true);
-    const data = await getPosts();
-    setPosts(data);
-    setLoading(false);
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    const data = await getPosts();
-    setPosts(data);
-    setRefreshing(false);
-  };
-
+  // Only call fetchPosts on mount
   useEffect(() => {
     fetchPosts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Đảm bảo KHÔNG có bất kỳ useFocusEffect hoặc callback nào gọi fetchPosts hoặc onRefresh ở đây!
+  const fetchPosts = async () => {
+    setLoading(true);
+    try {
+      const data = await getPosts();
+      console.log(`Fetched ${data.length} posts`);
+      setPosts(data);
+      // Initialize post states with the fetched data
+      initializePostStates(data);
+    } catch (error) {
+      // Convert error to string to avoid direct rendering of error objects
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error fetching posts:", errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      const data = await getPosts();
+      console.log(`Refreshed ${data.length} posts`);
+      setPosts(data);
+      // Re-initialize post states with refreshed data
+      initializePostStates(data);
+    } catch (error) {
+      // Convert error to string to avoid direct rendering of error objects
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error refreshing posts:", errorMessage);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   if (loading) {
     return (

@@ -4,15 +4,23 @@ import {
   Text, 
   StyleSheet, 
   Image, 
-  ScrollView, 
   TouchableOpacity, 
   ActivityIndicator, 
   SafeAreaView,
-  Share
+  Share,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  FlatList,
+  Alert,
+  Modal
 } from 'react-native';
 import { colors } from '../../utils/colors';
 import Icon from 'react-native-vector-icons/FontAwesome';
-import { getPostById, toggleLikePost, isPostLiked, toggleFavoritePost, isPostFavorited } from '../../services/postServices';
+import { getPostById, toggleFavoritePost, isPostFavorited } from '../../services/postServices';
+import { usePostContext } from '../../components/context/PostContext';
+import { addComment, getComments, deleteComment, updateComment } from '../../services/commentServices';
 import { RouteProp, useNavigation, useRoute } from '@react-navigation/native';
 import { RootStackParamList } from '../../types/stackparamlist';
 import { formatTimeAgo } from '../../utils/dateUtils';
@@ -26,43 +34,82 @@ const PostDetailScreen = () => {
   const route = useRoute<PostDetailRouteProp>();
   const { postId } = route.params;
   const navigation = useNavigation();
-
   const [post, setPost] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [isLiked, setIsLiked] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
-  const [likeCount, setLikeCount] = useState(0);
+  
+  // Use the PostContext for likes
+  const { likedPosts, likeCounts, toggleLike, initializePostStates } = usePostContext();
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [comments, setComments] = useState<any[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [selectedComment, setSelectedComment] = useState<any>(null);
+  const [showCommentMenu, setShowCommentMenu] = useState(false);
+  const [editCommentText, setEditCommentText] = useState('');
+  const [showEditCommentModal, setShowEditCommentModal] = useState(false);
+  const [editingComment, setEditingComment] = useState<any>(null);
+  const currentUser = getAuth().currentUser;
 
-  // Lấy thông tin bài đăng
+  // Lấy thông tin bài đăng và comments  // Force refresh when component mounts or when postId changes  
   useEffect(() => {
-    const fetchPostDetail = async () => {
+    const fetchData = async () => {
       try {
+        console.log("Fetching post data for ID:", postId);
         const postData = await getPostById(postId);
         if (postData) {
+          console.log("Post data received:", postData);
           setPost(postData);
-          setLikeCount(postData.likes ? postData.likes.length : 0);
+          console.log("Comment count from database:", postData.commentCount || 0);
           
-          // Kiểm tra trạng thái like và favorite
-          const currentUser = getAuth().currentUser;
-          if (currentUser && postData.likes) {
-            setIsLiked(postData.likes.includes(currentUser.uid));
-          }
+          // Initialize post state through context
+          initializePostStates([postData]);
           
           const favorited = await isPostFavorited(postId);
           setIsFavorite(favorited);
         }
+
+        // Fetch comments
+        await fetchComments();
       } catch (error) {
-        console.error("Error fetching post details:", error);
+        // Convert error to string to avoid direct rendering of error objects
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        console.error("Error fetching post details:", errorMessage);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchPostDetail();
-  }, [postId]);
+    fetchData();
+  }, [postId]); // Remove initializePostStates from dependencies
 
-  // Xử lý khi người dùng nhấn nút thích
+  const fetchComments = async () => {
+    setLoadingComments(true);
+    try {
+      // Get the comments first
+      const commentsData = await getComments(postId);
+      setComments(commentsData);
+      console.log(`[UPDATE] Fetched ${commentsData.length} comments for post ${postId}`);
+      
+      // If comment count doesn't match, then refresh post data
+      if (post && (post.commentCount || 0) !== commentsData.length) {
+        console.log(`Refreshing post data due to comment count mismatch`);
+        const refreshedPost = await getPostById(postId);
+        if (refreshedPost) {
+          setPost(refreshedPost);
+          // Re-initialize post states with fresh data from the server
+          initializePostStates([refreshedPost]);
+        }
+      }
+    } catch (error) {
+      // Convert error to string to avoid direct rendering of error objects
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error fetching comments:", errorMessage);
+    } finally {
+      setLoadingComments(false);
+    }
+  };// Xử lý khi người dùng nhấn nút thích
   const handleLike = async () => {
     try {
       const currentUser = getAuth().currentUser;
@@ -71,13 +118,14 @@ const PostDetailScreen = () => {
         return; // Người dùng chưa đăng nhập
       }
 
-      const result = await toggleLikePost(postId);
-      if (result.success) {
-        setIsLiked(!isLiked);
-        setLikeCount(prev => isLiked ? prev - 1 : prev + 1);
-      }
+      console.log(`Attempting to toggle like for post ID: ${postId}`);
+      await toggleLike(postId);
+      console.log(`Like toggled successfully via Post Context`);
     } catch (error) {
-      console.error("Error toggling like:", error);
+      // Convert error to string to avoid direct rendering of error objects
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error toggling like:", errorMessage);
+      Alert.alert("Lỗi", "Không thể thích bài viết này. Vui lòng thử lại sau.");
     }
   };
 
@@ -91,12 +139,12 @@ const PostDetailScreen = () => {
       }
 
       await toggleFavoritePost(postId, !isFavorite);
-      setIsFavorite(!isFavorite);
-    } catch (error) {
-      console.error("Error toggling favorite:", error);
+      setIsFavorite(!isFavorite);    } catch (error) {
+      // Convert error to string to avoid direct rendering of error objects
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error toggling favorite:", errorMessage);
     }
   };
-
   // Xử lý chia sẻ bài đăng
   const handleShare = async () => {
     try {
@@ -110,10 +158,81 @@ const PostDetailScreen = () => {
     }
   };
 
+  // Gửi bình luận
+  const handleComment = async () => {
+    if (!commentText.trim()) return;
+    
+    const currentUser = getAuth().currentUser;
+    if (!currentUser) {
+      setShowLoginModal(true);
+      return;
+    }
+    
+    setIsSubmitting(true);
+    try {
+      console.log(`Adding comment to post ${postId}`);
+      const result = await addComment(postId, commentText.trim());
+      if (result.success) {
+        setCommentText('');
+        Keyboard.dismiss();
+        
+        // First get the latest post data to ensure consistent comment count
+        const refreshedPost = await getPostById(postId);
+        if (refreshedPost) {
+          console.log(`[UPDATE] Post data refreshed with comment count: ${refreshedPost.commentCount || 0}`);
+          setPost(refreshedPost);
+        }
+        
+        // Then update comments list
+        await fetchComments();
+      } else {
+        Alert.alert('Lỗi', 'Không thể thêm bình luận. Vui lòng thử lại sau.');
+      }
+    } catch (error) {
+      console.error('Error posting comment:', error);
+      Alert.alert('Lỗi', 'Không thể thêm bình luận. Vui lòng thử lại sau.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Sửa bình luận
+  const handleEditComment = (comment: any) => {
+    setShowCommentMenu(false);
+    setEditingComment(comment);
+    setEditCommentText(comment.content);
+    setShowEditCommentModal(true);
+  };
+
+  const handleSaveEditComment = async () => {
+    if (!editCommentText.trim() || !editingComment) return;
+    
+    try {
+      setIsSubmitting(true);
+      const result = await updateComment(editingComment.id, editCommentText.trim());
+      if (result.success) {
+        setEditCommentText('');
+        setEditingComment(null);
+        setShowEditCommentModal(false);
+        Keyboard.dismiss();
+        
+        // Refresh comments
+        await fetchComments();
+      } else {
+        Alert.alert('Lỗi', 'Không thể sửa bình luận. Vui lòng thử lại sau.');
+      }
+    } catch (error) {
+      console.error('Error editing comment:', error);
+      Alert.alert('Lỗi', 'Không thể sửa bình luận. Vui lòng thử lại sau.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Hiển thị nội dung bài đăng tùy theo loại
   const renderPostContent = () => {
     if (!post) return null;
-    
+
     if (post.postType === 'recipe' && post.recipeDetails) {
       return <RecipePost recipeDetails={post.recipeDetails} caption={post.caption} />;
     } else if (post.postType === 'review' && post.reviewDetails) {
@@ -132,6 +251,58 @@ const PostDetailScreen = () => {
         </View>
       );
     }
+  };
+
+  const handleEditCommentAction = (comment: any) => {
+    setEditingComment(comment);
+    setEditCommentText(comment.content);
+    setShowEditCommentModal(true);
+  };
+  const handleDeleteComment = async (comment: any) => {
+    setShowCommentMenu(false);
+    try {
+      await deleteComment(comment.id, comment.postId);
+      // Refetch comments after deletion
+      await fetchComments();
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Error deleting comment:", errorMessage);
+      Alert.alert("Lỗi", "Không thể xóa bình luận. Vui lòng thử lại sau.");
+    }
+  };
+
+  const CommentItem = ({ comment }: { comment: any }) => {
+    const defaultAvatar = require('../../assets/images/defaultuser.png');
+    
+    return (
+      <View style={styles.commentItem}>
+        <Image
+          source={comment.userAvatar ? { uri: comment.userAvatar } : defaultAvatar}
+          defaultSource={defaultAvatar}
+          style={styles.commentAvatar}
+        />
+        <View style={styles.commentContent}>
+          <View style={styles.commentHeader}>
+            <Text style={styles.commentUsername}>{comment.username || 'Người dùng'}</Text>
+            {currentUser && comment.userId === currentUser.uid && (
+              <TouchableOpacity
+                style={styles.commentMenuButton}
+                onPress={() => {
+                  setSelectedComment(comment);
+                  setShowCommentMenu(true);
+                }}
+              >
+                <Icon name="ellipsis-h" size={18} color={colors.darkGray} />
+              </TouchableOpacity>
+            )}
+          </View>
+          <Text style={styles.commentText}>{comment.content}</Text>
+          <Text style={styles.commentTime}>
+            {comment.createdAt ? formatTimeAgo(comment.createdAt) : ''}
+          </Text>
+        </View>
+      </View>
+    );
   };
 
   if (loading) {
@@ -171,90 +342,138 @@ const PostDetailScreen = () => {
         <Text style={styles.headerTitle}>Chi tiết bài đăng</Text>
         <View style={{ width: 22 }} />
       </View>
-      
-      <ScrollView showsVerticalScrollIndicator={false}>
-        <View style={styles.postContainer}>
-          {/* User header */}
-          <View style={styles.userHeader}>
-            <Image 
-              source={{ uri: post.userAvatar || require('../../assets/images/defaultuser.png') }} 
-              style={styles.avatar} 
-            />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.username}>{post.username || 'User'}</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={styles.time}>
-                  {formatTimeAgo(post.createdAt)} · 
-                </Text>
-                <Icon name="globe" size={12} color={colors.darkGray} style={{ marginLeft: 4 }} />
+        <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      >
+        {/* Main content */}
+        <FlatList
+          data={comments}
+          keyExtractor={item => item.id}
+          renderItem={({ item }) => <CommentItem comment={item} />}
+          ItemSeparatorComponent={() => <View style={styles.commentSeparator} />}
+          contentContainerStyle={{ paddingBottom: 16 }}
+          ListHeaderComponent={() => (
+            <>
+              {/* Existing post content */}
+              <View style={styles.postContainer}>
+                {/* User header */}
+                <View style={styles.userHeader}>
+                  <Image 
+                    source={post?.userAvatar ? { uri: post.userAvatar } : require('../../assets/images/defaultuser.png')} 
+                    style={styles.avatar} 
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.username}>{post?.username || 'User'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={styles.time}>
+                        {post?.createdAt ? formatTimeAgo(post.createdAt) : ''}
+                      </Text>
+                      <Text style={styles.time}> {'\u00B7'} </Text>
+                      <Icon name="globe" size={12} color={colors.darkGray} style={{ marginLeft: 4 }} />
+                    </View>
+                  </View>
+                </View>
+                
+                {/* Post content */}
+                <View style={styles.contentContainer}>
+                  {renderPostContent()}
+                </View>
+                
+                {/* Post media */}
+                {post.mediaUrls && post.mediaUrls.length > 0 && (
+                  <Image 
+                    source={{ uri: post.mediaUrls[0] }} 
+                    style={styles.mediaImage} 
+                    resizeMode="cover" 
+                  />
+                )}
+                  {/* Action buttons */}
+                <View style={styles.actionBar}>
+                  <TouchableOpacity style={styles.actionBtn} onPress={handleLike}>
+                    <Icon 
+                      name={likedPosts[post.id] ? 'heart' : 'heart-o'} 
+                      size={22} 
+                      color="#FF4C61" 
+                    />
+                    <Text style={[styles.actionText, { color: '#FF4C61', fontWeight: 'bold' }]}> {likeCounts[post.id] || 0} </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.actionBtn}>
+                    <Icon name="comment-o" size={22} color={colors.primary} />
+                    <Text style={[styles.actionText, { color: colors.primary }]}> {post.commentCount || 0} </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
+                    <Icon name="share" size={22} color={colors.text} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.actionBtnRight} onPress={handleFavorite}>
+                    <Icon 
+                      name={isFavorite ? 'bookmark' : 'bookmark-o'} 
+                      size={22} 
+                      color={isFavorite ? '#FFD700' : colors.primary} 
+                    />
+                  </TouchableOpacity>
+                </View>
               </View>
-            </View>
-          </View>
-          
-          {/* Post content */}
-          <View style={styles.contentContainer}>
-            {renderPostContent()}
-          </View>
-          
-          {/* Post media */}
-          {post.mediaUrls && post.mediaUrls.length > 0 && (
-            <Image 
-              source={{ uri: post.mediaUrls[0] }} 
-              style={styles.mediaImage} 
-              resizeMode="cover" 
-            />
+              
+              {/* Comments section header */}
+              <View style={styles.commentsSection}>
+                <View style={styles.sectionHeader}>
+                  <Text style={styles.sectionTitle}>Bình luận ({post.commentCount || 0})</Text>
+                </View>
+                
+                {loadingComments && comments.length === 0 ? (
+                  <ActivityIndicator style={{ padding: 20 }} color={colors.primary} />
+                ) : null}
+              </View>
+            </>
           )}
-          
-          {/* Action buttons */}
-          <View style={styles.actionBar}>
-            <TouchableOpacity style={styles.actionBtn} onPress={handleLike}>
-              <Icon 
-                name={isLiked ? 'heart' : 'heart-o'} 
-                size={22} 
-                color="#FF4C61" 
-              />
-              <Text style={[styles.actionText, { color: '#FF4C61' }]}>
-                {likeCount}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionBtn}>
-              <Icon name="comment-o" size={22} color={colors.primary} />
-              <Text style={[styles.actionText, { color: colors.primary }]}>
-                {post.commentCount || 0}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionBtn} onPress={handleShare}>
-              <Icon name="share" size={22} color={colors.text} />
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionBtnRight} onPress={handleFavorite}>
-              <Icon 
-                name={isFavorite ? 'bookmark' : 'bookmark-o'} 
-                size={22} 
-                color={isFavorite ? '#FFD700' : colors.primary} 
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        {/* Comments section */}
-        <View style={styles.commentsSection}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Bình luận</Text>
-          </View>
-          
-          {/* Comment list - phần này sẽ được mở rộng sau */}
-          <View style={styles.noComments}>
-            <Icon name="comments-o" size={40} color={colors.lightGray} />
-            <Text style={styles.noCommentsText}>Chưa có bình luận nào</Text>
-            <Text style={styles.noCommentsSubText}>Hãy là người đầu tiên bình luận</Text>
-          </View>
-        </View>
-      </ScrollView>
+          ListFooterComponent={() => (
+            <View style={{ height: 16 }} />
+          )}
+          keyboardShouldPersistTaps="handled"
+          style={{ flex: 1 }}
+          ListEmptyComponent={() => (
+            !loadingComments ? (
+              <View style={[styles.noComments, { marginTop: 8 }]}>
+                <Icon name="comments-o" size={40} color={colors.lightGray} />
+                <Text style={styles.noCommentsText}>Hãy là người đầu tiên bình luận</Text>
+                <Text style={styles.noCommentsSubText}>Chia sẻ suy nghĩ của bạn về bài viết này</Text>
+              </View>
+            ) : null
+          )}
+          refreshing={loadingComments}
+          onRefresh={fetchComments}
+        />
 
-      {/* Login Modal */}
+        {/* Comment input section */}
+        <View style={styles.commentInputContainer}>
+          <TextInput
+            style={styles.commentInput}
+            placeholder="Viết bình luận..."
+            value={commentText}
+            onChangeText={setCommentText}
+            multiline
+            maxLength={500}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!commentText.trim() || isSubmitting) && styles.sendButtonDisabled
+            ]}
+            onPress={handleComment}
+            disabled={!commentText.trim() || isSubmitting}
+          >
+            <Icon
+              name="send"
+              size={20}
+              color={!commentText.trim() || isSubmitting ? colors.darkGray : colors.primary}
+            />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+
+      {/* Login modal */}
       {showLoginModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -279,6 +498,79 @@ const PostDetailScreen = () => {
           </View>
         </View>
       )}
+
+      {/* Modal menu cho sửa/xóa comment */}
+      <Modal
+        visible={showCommentMenu}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCommentMenu(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.2)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#fff', borderRadius: 8, padding: 20, minWidth: 200 }}>
+            <TouchableOpacity
+              style={{ paddingVertical: 10 }}
+              onPress={() => handleEditComment(selectedComment)}
+            >
+              <Text style={{ color: colors.primary, fontSize: 16 }}>Sửa bình luận</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ paddingVertical: 10 }}
+              onPress={() => handleDeleteComment(selectedComment)}
+            >
+              <Text style={{ color: 'red', fontSize: 16 }}>Xóa bình luận</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={{ paddingVertical: 10 }}
+              onPress={() => setShowCommentMenu(false)}
+            >
+              <Text style={{ color: colors.darkGray, fontSize: 16 }}>Hủy</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal sửa bình luận */}
+      <Modal
+        visible={showEditCommentModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowEditCommentModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { width: '90%' }]}>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowEditCommentModal(false)}
+            >
+              <Icon name="close" size={18} color={colors.darkGray} />
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Chỉnh sửa bình luận</Text>
+            <TextInput
+              style={[styles.commentInput, { width: '100%', marginVertical: 20 }]}
+              value={editCommentText}
+              onChangeText={setEditCommentText}
+              multiline
+              maxLength={500}
+              placeholder="Nhập nội dung bình luận..."
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', width: '100%' }}>
+              <TouchableOpacity
+                style={[styles.modalButton, { marginRight: 10, backgroundColor: colors.darkGray }]}
+                onPress={() => setShowEditCommentModal(false)}
+              >
+                <Text style={[styles.modalButtonText]}>Hủy</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalButton]}
+                onPress={handleSaveEditComment}
+              >
+                <Text style={styles.modalButtonText}>Lưu</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -426,7 +718,7 @@ const styles = StyleSheet.create({
   },
   commentsSection: {
     backgroundColor: '#fff',
-    marginBottom: 40,
+    marginTop: 8,
   },
   sectionHeader: {
     padding: 16,
@@ -501,6 +793,115 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  commentInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    backgroundColor: '#fff',
+  },
+  commentInput: {
+    flex: 1,
+    minHeight: 40,
+    maxHeight: 100,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginRight: 8,
+    fontSize: 16,
+    color: colors.text,
+  },
+  sendButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendButtonDisabled: {
+    opacity: 0.6,
+  },
+  commentItem: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  commentAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginLeft: 12,
+  },
+  commentContent: {
+    flex: 1,
+    marginLeft: 20,
+  },
+  commentUsername: {
+    fontWeight: '600',
+    fontSize: 14,
+    color: colors.text,
+    marginBottom: 2,
+  },
+  commentText: {
+    fontSize: 14,
+    color: colors.text,
+    lineHeight: 20,
+  },
+  commentTime: {
+    fontSize: 12,
+    color: colors.darkGray,
+    marginTop: 4,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4,
+    
+  },
+  commentMenuButton: {
+    padding: 4,
+    marginRight: 20
+  },
+  commentSeparator: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginVertical: 12,
+  },
+  editCommentModal: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  editCommentContent: {
+    width: '80%',
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: 20,
+    alignItems: 'center',
+  },
+  editCommentTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 10,
+  },
+  editCommentInput: {
+    width: '100%',
+    minHeight: 40,
+    maxHeight: 100,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    marginTop: 8,
+    fontSize: 16,
+    color: colors.text,
+    textAlignVertical: 'top',
   },
 });
 

@@ -1,257 +1,407 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigation } from '@react-navigation/native';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Image,
-  TouchableOpacity,
-  TextInput,
-  RefreshControl,
+  View, Text, StyleSheet, TextInput, TouchableOpacity, FlatList, Image, ActivityIndicator, Animated, StatusBar, Share, Alert, Modal, Pressable, ScrollView
 } from 'react-native';
 import Icon from 'react-native-vector-icons/FontAwesome';
 import { colors } from '../../utils/colors';
 import { getPosts } from '../../services/postServices';
-import moment from 'moment';
-import 'moment/locale/vi';
-import RecipePost from '../../components/user/RecipePost';
+import { getAllCategories } from '../../services/categoriesServices';
 import ReviewPost from '../../components/user/ReviewPost';
+import RecipePost from '../../components/user/RecipePost';
+import type { Category } from '../../services/categoriesServices';
+import { getAuth } from '@react-native-firebase/auth';
+import { getFirestore, doc, updateDoc, arrayUnion, arrayRemove, getDoc } from '@react-native-firebase/firestore';
+import { usePostContext } from '../../components/context/PostContext';
 
-function PostItem({ post }: { post: any }) {
-  const [isFavorite, setIsFavorite] = useState(false);
-  const [isVisible, setIsVisible] = useState(true);
-  const [showFullCaption, setShowFullCaption] = useState(false);
-  const CAPTION_LIMIT = 150;
+// Post types constant
+const POST_TYPES = [
+  { key: 'all', label: 'Tất cả' },
+  { key: 'review', label: 'Đánh giá' },
+  { key: 'recipe', label: 'Công thức' },
+  { key: 'general', label: 'Chung' },
+];
 
-  moment.locale('vi');
+const SORT_OPTIONS = [
+  { key: 'newest', label: 'Mới nhất' },
+  { key: 'oldest', label: 'Cũ nhất' },
+  { key: 'popular', label: 'Phổ biến' },
+];
 
-  const handleFavorite = () => setIsFavorite(!isFavorite);
-  const handleHide = () => setIsVisible(false);
+type RootStackParamList = {
+  PostDetail: { postId: string | number };
+};
 
-  const renderCaption = () => {
-    if (!post.caption) return null;
-    const shouldTruncate = post.caption.length > CAPTION_LIMIT;
-    const displayedText =
-      shouldTruncate && !showFullCaption
-        ? post.caption.slice(0, CAPTION_LIMIT) + '...'
-        : post.caption;
-    return (
-      <View>
-        <Text style={styles.caption}>{displayedText}</Text>
-        {shouldTruncate && (
-          <TouchableOpacity onPress={() => setShowFullCaption(!showFullCaption)}>
-            <Text style={styles.readMoreText}>
-              {showFullCaption ? 'Thu gọn' : 'Xem thêm'}
-            </Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    );
-  };
+type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'PostDetail'>;
 
-  const renderPostContent = () => {
-    if (post.postType === 'review' && post.reviewDetails) {
-      return (
-        <ReviewPost
-          reviewDetails={post.reviewDetails}
-          caption={post.caption}
-          location={post.location}
-        />
-      );
-    }
-    if (post.postType === 'recipe' && post.recipeDetails) {
-      return (
-        <RecipePost recipeDetails={post.recipeDetails} caption={post.caption} />
-      );
-    }
-    return renderCaption();
-  };
-
-  if (!isVisible) return null;
-
-  return (
-    <View style={styles.postContainer}>
-      <View style={styles.header}>
-        <Image
-          source={{
-            uri: post.userAvatar || require('../../assets/images/defaultuser.png'),
-          }}
-          style={styles.avatar}
-        />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.username}>{post.username || 'User'}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={styles.time}>
-              {post.createdAt
-                ? moment(
-                    post.createdAt.seconds
-                      ? post.createdAt.seconds * 1000
-                      : post.createdAt
-                  ).fromNow()
-                : ''}{' '}
-              ·{' '}
-            </Text>
-            <Icon name="globe" size={12} color={colors.darkGray} />
-          </View>
-        </View>
-        <TouchableOpacity style={styles.hideBtn} onPress={handleHide}>
-          <Icon name="close" size={20} color={colors.darkGray} />
-        </TouchableOpacity>
-      </View>
-
-      {renderPostContent()}
-
-      {post.hashtags && post.hashtags.length > 0 && (
-        <Text style={styles.hashtag}>#{post.hashtags[0]}</Text>
-      )}
-
-      {post.mediaUrls && post.mediaUrls.length > 0 && (
-        <Image
-          source={{ uri: post.mediaUrls[0] }}
-          style={styles.postImage}
-          resizeMode="cover"
-        />
-      )}
-
-      <View style={styles.actionBar}>
-        <TouchableOpacity style={styles.actionBtn}>
-          <Icon name="heart-o" size={22} color="#FF4C61" />
-          <Text style={[styles.actionText, { color: '#FF4C61', fontWeight: 'bold' }]}>
-            {post.likes?.length || 0}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn}>
-          <Icon name="comment-o" size={22} color={colors.primary} />
-          <Text style={[styles.actionText, { color: colors.primary, fontWeight: 'bold' }]}>
-            {post.commentCount || 0}
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn}>
-          <Icon name="share" size={22} color={colors.text} />
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.actionBtn1} onPress={handleFavorite}>
-          <Icon
-            name={isFavorite ? 'bookmark' : 'bookmark-o'}
-            size={22}
-            color={isFavorite ? '#FFD700' : colors.primary}
-          />
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
-
-export default function HomeScreen() {
+export default function DiscoverScreen() {
+  const navigation = useNavigation<NavigationProp>();
+  const [search, setSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedPostType, setSelectedPostType] = useState('all');
+  const [sortBy, setSortBy] = useState('newest');
   const [posts, setPosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [refreshing, setRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedPostType, setSelectedPostType] = useState<string | null>('all');
-  const [availablePostTypes, setAvailablePostTypes] = useState<string[]>([]);
-  const [sortModalVisible, setSortModalVisible] = useState(false);
-  const [sortOption, setSortOption] = useState<'newest' | 'oldest'>('newest');
-
-  const fetchPosts = async () => {
-    setLoading(true);
-    const data: any[] = await getPosts();
-    setPosts(data);
-    const allowedTypes = ['general', 'recipe', 'review'];
-    const types = Array.from(new Set(data.map(post => post.postType))).filter(type =>
-      allowedTypes.includes(type)
-    );
-    setAvailablePostTypes(['all', ...types]);
-    setLoading(false);
-  };
-
-  const onRefresh = async () => {
-    setRefreshing(true);
-    const data = await getPosts();
-    setPosts(data);
-    setRefreshing(false);
-  };
-
+  const [bookmarked, setBookmarked] = useState<{ [id: string]: boolean }>({});
+  const [filterMode, setFilterMode] = useState<'type' | 'category'>('type');
+  const [categoryModalVisible, setCategoryModalVisible] = useState(false);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loadingCategories, setLoadingCategories] = useState(true);
+  const scrollY = React.useRef(new Animated.Value(0)).current;
+  
+  // Use the PostContext instead of local state for likes
+  const { likedPosts, likeCounts, toggleLike, initializePostStates } = usePostContext();
   useEffect(() => {
-    fetchPosts();
+    fetchData();
+    fetchCategories();
   }, []);
+  // Removed useEffect that depended on [posts, initializePostStates]
 
+  const fetchData = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await getPosts();
+      setPosts(data);
+      // Initialize post states after fetching posts
+      if (data && data.length > 0) {
+        initializePostStates(data);
+      }
+    } catch (err) {
+      setError('Không thể tải dữ liệu.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const fetchCategories = async () => {
+    setLoadingCategories(true);
+    try {
+      const categoriesData = await getAllCategories();
+      setCategories([{ categoryId: 'all', name: 'Tất cả', type: 'all', description: '', createdAt: new Date() }, ...categoriesData]);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    } finally {
+      setLoadingCategories(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchData();
+  };
+
+  // Lọc bài viết theo chế độ filter
   const filteredPosts = posts
     .filter(post => {
-      const matchSearch = post.username?.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchPostType = selectedPostType === 'all' || post.postType === selectedPostType;
-      return matchSearch && matchPostType;
+      // Lọc theo thể loại bài viết
+      if (filterMode === 'type') {
+        if (selectedPostType === 'all') return true;
+        switch (selectedPostType) {
+          case 'review':
+            return post.type === 'review' || post.reviewDetails;
+          case 'recipe':
+            return post.type === 'recipe' || post.recipeDetails;
+          case 'general':
+            return post.type === 'general' || (!post.reviewDetails && !post.recipeDetails);
+          default:
+            return true;
+        }
+      }
+      // Lọc theo danh mục
+      else {
+        if (selectedCategory === 'all') return true;
+        return post.categoryId === selectedCategory;
+      }
     })
+    .filter(post =>
+      search ? (
+        (post.caption && post.caption.toLowerCase().includes(search.toLowerCase())) ||
+        (post.username && post.username.toLowerCase().includes(search.toLowerCase()))
+      ) : true
+    )
     .sort((a, b) => {
-      const aTime = a.createdAt?.seconds || a.createdAt || 0;
-      const bTime = b.createdAt?.seconds || b.createdAt || 0;
-      return sortOption === 'newest' ? bTime - aTime : aTime - bTime;
+      // Hàm chuyển đổi createdAt sang Date
+      const getTimestamp = (post: any) => {
+        if (!post.createdAt) return 0;
+        if (post.createdAt.toDate) {
+          return post.createdAt.toDate().getTime();
+        }
+        if (post.createdAt.seconds) {
+          return post.createdAt.seconds * 1000;
+        }
+        if (typeof post.createdAt === 'string') {
+          return new Date(post.createdAt).getTime();
+        }
+        return 0;
+      };
+
+      const timeA = getTimestamp(a);
+      const timeB = getTimestamp(b);
+
+      if (sortBy === 'newest') return timeB - timeA;
+      if (sortBy === 'oldest') return timeA - timeB;
+      if (sortBy === 'popular') return (b.likes?.length || 0) - (a.likes?.length || 0);
+      return 0;
     });
+
+  const handleBookmark = (id: string) => {
+    setBookmarked(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+  
+  const handleShare = async (item: any) => {
+    try {
+      await Share.share({
+        message: `${item.caption}\n${item.mediaUrls && item.mediaUrls[0] ? item.mediaUrls[0] : ''}`,
+      });
+    } catch (error) {
+      Alert.alert('Lỗi', 'Không thể chia sẻ bài viết.');
+    }
+  };
+  
+  const handleComment = (item: any) => {
+    Alert.alert('Bình luận', 'Chức năng bình luận sẽ được cập nhật.');
+  };
+
+  const renderPost = ({ item }: { item: any }) => {
+    // Using data from the parent component's state instead of hooks
+    const isLiked = likedPosts[item.id] || false;
+    const likeCount = likeCounts[item.id] || 0;
+    
+    const handlePostPress = () => {
+      navigation.navigate('PostDetail', { postId: item.id });
+    };  // Use the toggleLike function from context
+  async function handleLikePress(id: string): Promise<void> {
+    try {
+      const currentUser = getAuth().currentUser;
+      if (!currentUser) {
+        Alert.alert("Yêu cầu đăng nhập", "Vui lòng đăng nhập để thích bài viết");
+        return;
+      }
+      
+      await toggleLike(id);
+    } catch (error) {
+      console.error("Error toggling like:", error);
+      Alert.alert("Lỗi", "Không thể thực hiện thao tác này");
+    }
+  }
+
+    let PostComponent = null;
+    if (item.type === 'review' && item.reviewDetails) {
+      PostComponent = (
+        <TouchableOpacity onPress={handlePostPress}>
+          <ReviewPost
+            reviewDetails={item.reviewDetails}
+            caption={item.caption}
+            hashtags={item.hashtags}
+            category={item.category}
+            location={item.location}
+          />
+        </TouchableOpacity>
+      );
+    } else if (item.type === 'recipe' && item.recipeDetails) {
+      PostComponent = (
+        <TouchableOpacity onPress={handlePostPress}>
+          <RecipePost
+            recipeDetails={item.recipeDetails}
+            caption={item.caption}
+          />
+        </TouchableOpacity>
+      );
+    } else {
+      PostComponent = (
+        <TouchableOpacity onPress={handlePostPress}>
+          <View style={styles.postContainer}>
+            <View style={styles.postHeader}>
+              <Image
+                source={item.userAvatar ? { uri: item.userAvatar } : require('../../assets/images/defaultuser.png')}
+                style={styles.avatar}
+                defaultSource={require('../../assets/images/defaultuser.png')}
+              />
+              <Text style={styles.username}>{item.username}</Text>
+            </View>
+            {item.mediaUrls && item.mediaUrls.length > 0 && (
+              <Image
+                source={{ uri: item.mediaUrls[0] }}
+                style={styles.postImage}
+                defaultSource={require('../../assets/images/defaultuser.png')}
+              />
+            )}
+            <Text style={styles.caption}>{item.caption}</Text>
+            {item.hashtags && (
+              <View style={styles.hashtagRow}>
+                {item.hashtags.map((tag: any) => (
+                  <Text key={tag} style={styles.hashtag}>#{tag}</Text>
+                ))}
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      );
+    }
+
+    return (
+      <View style={styles.postWrapper}>
+        {PostComponent}
+        <View style={styles.socialRow}>
+          <TouchableOpacity onPress={() => handleLikePress(item.id)} style={styles.actionBtn}>
+            <Icon name={isLiked ? 'heart' : 'heart-o'} size={24} color={isLiked ? '#FF4C61' : '#888'} />
+            <Text style={[styles.actionText, { color: isLiked ? '#FF4C61' : '#888' }]}>{likeCount}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleComment(item)} style={styles.actionBtn}>
+            <Icon name="comment-o" size={24} color="#888" />
+            <Text style={styles.actionText}>{item.commentCount || 0}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleShare(item)}>
+            <Icon name="share" size={22} color="#888" style={styles.socialIcon} />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => handleBookmark(item.id)} style={{ marginLeft: 'auto' }}>
+            <Icon name={bookmarked[item.id] ? 'bookmark' : 'bookmark-o'} size={24} color={bookmarked[item.id] ? '#FFD700' : '#888'} />
+          </TouchableOpacity>
+        </View>
+      </View>
+    );
+  };
+
+  // Animated header
+  const headerTranslate = scrollY.interpolate({
+    inputRange: [0, 100],
+    outputRange: [0, -80],
+    extrapolate: 'clamp',
+  });
 
   return (
     <View style={styles.container}>
-      <View style={styles.searchContainer}>
-        <TextInput
-          placeholder="Tìm kiếm món ăn, công thức..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={styles.searchInput}
-        />
-        <TouchableOpacity onPress={() => setSortModalVisible(true)} style={styles.filterBtn}>
-          <Icon name="filter" size={20} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.filterContainer}>
-        {availablePostTypes.map((type) => (
-          <TouchableOpacity
-            key={type}
-            style={[styles.filterButton, selectedPostType === type && styles.activeFilter]}
-            onPress={() => setSelectedPostType(type)}
-          >
-            <Text style={[styles.filterText, selectedPostType === type && styles.activeFilterText]}>
-              {type === 'all' ? 'Tất cả' : type === 'recipe' ? 'Công thức' : type === 'review' ? 'Đánh giá' : 'Bài viết'}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <FlatList
-        data={filteredPosts}
-        keyExtractor={item => item.id}
-        renderItem={({ item }) => <PostItem post={item} />}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 16 }}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
-        }
-      />
-
-      {sortModalVisible && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Sắp xếp theo</Text>
+      <Animated.View style={[styles.animatedHeader, { transform: [{ translateY: headerTranslate }] }]}>
+        <View style={styles.searchRow}>
+          <Icon name="search" size={18} color={colors.darkGray} style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Tìm kiếm món ăn, người dùng..."
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
+        <View style={[styles.filterRow, { justifyContent: 'space-between' }]}>
+          <View style={{ flexDirection: 'row' }}>
             <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => {
-                setSortOption('newest');
-                setSortModalVisible(false);
-              }}
+              style={[styles.filterBtn, filterMode === 'type' && styles.filterBtnActive]}
+              onPress={() => setFilterMode('type')}
             >
-              <Text style={styles.modalText}>Mới nhất</Text>
+              <Text style={[styles.filterText, filterMode === 'type' && styles.filterTextActive]}>Lọc theo thể loại</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.modalOption}
-              onPress={() => {
-                setSortOption('oldest');
-                setSortModalVisible(false);
-              }}
+              style={[styles.filterBtn, filterMode === 'category' && styles.filterBtnActive]}
+              onPress={() => setFilterMode('category')}
             >
-              <Text style={styles.modalText}>Cũ nhất</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setSortModalVisible(false)} style={styles.modalClose}>
-              <Text style={styles.modalCloseText}>Đóng</Text>
+              <Text style={[styles.filterText, filterMode === 'category' && styles.filterTextActive]}>Lọc theo danh mục</Text>
             </TouchableOpacity>
           </View>
+          <FlatList
+            data={SORT_OPTIONS}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={item => item.key}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[styles.filterBtn, sortBy === item.key && styles.filterBtnActive]}
+                onPress={() => setSortBy(item.key)}
+              >
+                <Text style={[styles.filterText, sortBy === item.key && styles.filterTextActive]}>{item.label}</Text>
+              </TouchableOpacity>
+            )}
+          />
         </View>
+        {filterMode === 'type' ? (
+          <FlatList
+            data={POST_TYPES}
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyExtractor={item => item.key}
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={[styles.filterBtn, selectedPostType === item.key && styles.filterBtnActive]}
+                onPress={() => setSelectedPostType(item.key)}
+              >
+                <Text style={[styles.filterText, selectedPostType === item.key && styles.filterTextActive]}>{item.label}</Text>
+              </TouchableOpacity>
+            )}
+            style={{ marginLeft: 8, marginBottom: 2 }}
+          />
+        ) : (
+          <View style={{ marginLeft: 8, marginBottom: 2 }}>
+            <TouchableOpacity style={[
+              styles.filterBtn,
+              { flexDirection: 'row', alignItems: 'center', minWidth: 120 },
+              selectedCategory !== 'all' && styles.filterBtnActive
+            ]}
+              onPress={() => setCategoryModalVisible(true)}
+            >
+              <Text style={[
+                styles.filterText,
+                { flex: 1 },
+                selectedCategory !== 'all' && { color: '#fff', fontWeight: 'bold' }
+              ]}>
+                {categories.find(c => c.categoryId === selectedCategory)?.name || 'Chọn danh mục'}
+              </Text>
+              <Icon
+                name="chevron-down"
+                size={14}
+                color={selectedCategory !== 'all' ? '#fff' : '#888'}
+                style={{ marginLeft: 6 }} />
+            </TouchableOpacity>
+            <Modal
+              visible={categoryModalVisible}
+              transparent
+              animationType="fade"
+              onRequestClose={() => setCategoryModalVisible(false)}
+            >
+              <Pressable style={styles.modalOverlay} onPress={() => setCategoryModalVisible(false)}>
+                <View style={styles.modalContent}>
+                  <Text style={styles.modalTitle}>Chọn danh mục</Text>
+                  <ScrollView style={{ maxHeight: 300 }}>
+                    {categories.map((item: Category) => (
+                      <TouchableOpacity
+                        key={item.categoryId}
+                        style={[styles.modalOption, selectedCategory === item.categoryId && styles.modalOptionActive]}
+                        onPress={() => {
+                          setSelectedCategory(item.categoryId);
+                          setCategoryModalVisible(false);
+                        }}
+                      >
+                        <Text style={[styles.modalOptionText, selectedCategory === item.categoryId && styles.modalOptionTextActive]}>
+                          {item.name}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              </Pressable>
+            </Modal>
+          </View>
+        )}
+      </Animated.View>
+      {loading ? (
+        <ActivityIndicator size="large" color={colors.primary || '#FF4C61'} style={{ marginTop: 40 }} />
+      ) : error ? (
+        <Text style={styles.emptyText}>{error}</Text>
+      ) : (
+        <Animated.FlatList
+          data={filteredPosts}
+          keyExtractor={item => item.id}
+          renderItem={renderPost} contentContainerStyle={{ paddingTop: 200, paddingBottom: 24 }}
+          ListEmptyComponent={<Text style={styles.emptyText}>Không tìm thấy bài viết phù hợp.</Text>}
+          showsVerticalScrollIndicator={false}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+            { useNativeDriver: true }
+          )}
+          scrollEventThrottle={16}
+        />
       )}
     </View>
   );
@@ -260,156 +410,216 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
-    paddingTop: 8,
-  },
-  searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#fff',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    margin: 12,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-  },
-  filterBtn: {
-    marginLeft: 8,
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: 12,
-    paddingHorizontal: 12,
-    marginLeft: 7,
-  },
-  filterButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginRight: 5,
-    marginBottom: 8,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-  },
-  activeFilter: {
-    backgroundColor: colors.primary,
-  },
-  filterText: {
-    fontSize: 14,
-    color: colors.text,
-  },
-  activeFilterText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  postContainer: {
-    marginBottom: 16,
-    backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 12,
-  },
-  username: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  time: {
-    fontSize: 12,
-    color: colors.darkGray,
-  },
-  hideBtn: {
-    padding: 8,
-  },
-  caption: {
-    fontSize: 14,
-    color: colors.text,
-    marginBottom: 8,
-  },
-  readMoreText: {
-    fontSize: 12,
-    color: colors.primary,
-  },
-  hashtag: {
-    fontSize: 12,
-    color: colors.primary,
-    marginTop: 8,
-  },
-  postImage: {
-    width: '100%',
-    height: 200,
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  actionBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 12,
-  },
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  actionText: {
-    marginLeft: 4,
-    fontSize: 14,
-  },
-  actionBtn1: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  modalOverlay: {
+  }, 
+  animatedHeader: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: '#fff',
+    zIndex: 999,
+    paddingTop: 24,
+    paddingBottom: 8,
+    paddingHorizontal: 0,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  header: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.primary || '#FF4C61',
+    marginLeft: 20,
+    marginBottom: 12,
+  },
+  searchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f2f2f2',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    paddingVertical: 8,
+    color: colors.text,
+    backgroundColor: 'transparent',
+  },
+  filterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+    marginBottom: 2,
+    marginHorizontal: 8,
+  },
+  filterBtn: {
+    backgroundColor: '#f2f2f2',
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 4,
+  },
+  filterBtnActive: {
+    backgroundColor: colors.primary || '#FF4C61',
+  },
+  filterText: {
+    color: '#333',
+    fontSize: 14,
+  },
+  filterTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  postWrapper: {
+    marginBottom: 18,
+    marginHorizontal: 0,
+  },
+  postContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 18,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  postHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  }, 
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+    backgroundColor: '#f2f2f2',
+    resizeMode: 'cover',
+  },
+  username: {
+    fontWeight: 'bold',
+    fontSize: 15,
+    color: '#222',
+  },
+  postImage: {
+    width: '100%',
+    height: 180,
+    borderRadius: 10,
+    marginBottom: 8,
+    marginTop: 2,
+    backgroundColor: '#f8f8f8',
+  },
+  caption: {
+    fontSize: 15,
+    color: '#333',
+    marginBottom: 4,
+  },
+  hashtagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 2,
+  },
+  hashtag: {
+    color: colors.primary || '#FF4C61',
+    fontSize: 13,
+    marginRight: 8,
+    fontWeight: '500',
+  },
+  socialRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    marginHorizontal: 24,
+    justifyContent: 'space-between',
+  },
+  socialIcon: {
+    marginRight: 10,
+  },
+  actionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 6,
+  },
+  actionBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+  },
+  actionText: {
+    marginLeft: 6,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#222',
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#888',
+    fontSize: 16,
+    marginTop: 32,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 100,
   },
-  modalContainer: {
-    width: '80%',
+  modalContent: {
     backgroundColor: '#fff',
+    borderRadius: 12,
     padding: 20,
-    borderRadius: 10,
+    minWidth: 260,
     elevation: 5,
+    alignItems: 'stretch',
   },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 16,
+    color: colors.primary || '#FF4C61',
+    textAlign: 'center',
   },
   modalOption: {
     paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginBottom: 4,
   },
-  modalText: {
+  modalOptionActive: {
+    backgroundColor: colors.primary || '#FF4C61',
+  },
+  modalOptionText: {
     fontSize: 16,
+    color: '#333',
+    textAlign: 'center',
   },
-  modalClose: {
-    marginTop: 16,
-    alignItems: 'flex-end',
+  modalOptionTextActive: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
-  modalCloseText: {
-    color: colors.primary,
-    fontSize: 16,
-  },
-  
 });
