@@ -76,7 +76,7 @@ export const createPost = async (
       userId: user.uid,
       username: userData?.username || '',
       userAvatar: userData?.photoURL || '',
-      caption: postData.caption,
+      caption: postData.caption || '',
       mediaUrls: postData.mediaUrls,
       mediaType: postData.mediaType,
       likes: [],
@@ -106,12 +106,48 @@ export const createPost = async (
 };
 
 // Lấy danh sách bài đăng (có thể mở rộng thêm điều kiện lọc nếu cần)
-export const getPosts = async () => {
+export const getPosts = async (pageNum?: number, limit?: number) => {
   try {
+    // Get posts from 'Posts' collection (capital P)
     const postsRef = collection(getFirestore(), 'Posts');
     const postsQuery = query(postsRef, orderBy('createdAt', 'desc'));
     const querySnapshot = await getDocs(postsQuery);
-    const posts = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    const posts = querySnapshot.docs.map(doc => {
+      const postData = doc.data();
+      return { 
+        id: doc.id, 
+        ...postData,
+        commentCount: postData.commentCount || 0 
+      };
+    });
+    
+    // Also check for posts in 'posts' collection (lowercase p) for backwards compatibility
+    try {
+      const lowercasePostsRef = collection(getFirestore(), 'posts');
+      const lowercasePostsQuery = query(lowercasePostsRef, orderBy('createdAt', 'desc'));
+      const lowercaseQuerySnapshot = await getDocs(lowercasePostsQuery);
+      
+      // If there are posts in the lowercase collection, add them to the results
+      if (!lowercaseQuerySnapshot.empty) {
+        console.log(`Found ${lowercaseQuerySnapshot.size} posts in lowercase 'posts' collection`);
+        const lowercasePosts = lowercaseQuerySnapshot.docs.map(doc => {
+          const postData = doc.data();
+          return { 
+            id: doc.id, 
+            ...postData,
+            commentCount: postData.commentCount || 0 
+          };
+        });
+        
+        // Combine both results
+        return [...posts, ...lowercasePosts];
+      }
+    } catch (lowercaseError) {
+      console.error('Error fetching from lowercase posts collection:', lowercaseError);
+      // Continue with just the uppercase collection results
+    }
+    
     return posts;
   } catch (error) {
     console.error('Error fetching posts:', error);
@@ -312,29 +348,50 @@ export const toggleLikePost = async (postId: string) => {
     const user = auth.currentUser;
     
     if (!user) {
-      throw new Error('User not authenticated');
+      console.log('User not authenticated');
+      return { success: false, error: 'User not authenticated' };
     }
     
-    const postRef = doc(getFirestore(), 'Posts', postId);
-    const postDoc = await getDoc(postRef);
+    console.log(`toggleLikePost: Processing for post ${postId} by user ${user.uid}`);
     
+    // Try with capitalized collection name first
+    let postRef = doc(getFirestore(), 'Posts', postId);
+    let postDoc = await getDoc(postRef);
+    
+    // If not found in 'Posts', try with lowercase 'posts'
     if (!postDoc.exists) {
-      throw new Error('Post does not exist');
+      console.log(`Post ${postId} not found in 'Posts' collection, trying 'posts'`);
+      postRef = doc(getFirestore(), 'posts', postId);
+      postDoc = await getDoc(postRef);
+      
+      if (!postDoc.exists) {
+        console.error(`Post ${postId} not found in either collection`);
+        return { success: false, error: 'Post does not exist' };
+      } else {
+        console.log(`Post ${postId} found in lowercase 'posts' collection`);
+      }
+    } else {
+      console.log(`Post ${postId} found in 'Posts' collection`);
     }
     
     const postData = postDoc.data();
     const likes = postData?.likes || [];
     const isLiked = likes.includes(user.uid);
     
+    console.log(`Current like status: ${isLiked ? 'Liked' : 'Not liked'}`);
+    console.log(`Like count before: ${likes.length}`);
+    
     if (isLiked) {
       // Xóa like
+      console.log(`Removing like from user ${user.uid}`);
       await updateDoc(postRef, {
-        likes: likes.filter((id: string) => id !== user.uid)
+        likes: arrayRemove(user.uid)
       });
     } else {
       // Thêm like
+      console.log(`Adding like from user ${user.uid}`);
       await updateDoc(postRef, {
-        likes: [...likes, user.uid]
+        likes: arrayUnion(user.uid)
       });
       
       // Tạo thông báo khi người dùng thích bài viết (chỉ khi thêm like, không tạo khi bỏ like)
@@ -364,10 +421,11 @@ export const toggleLikePost = async (postId: string) => {
       }
     }
     
+    console.log(`Like operation completed successfully`);
     return { success: true, isLiked: !isLiked };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error toggling like post:', error);
-    throw error;
+    return { success: false, error: error.message || 'Unknown error' };
   }
 };
 
@@ -468,11 +526,37 @@ export const isPostInFavorites = async (postId: string): Promise<boolean> => {
 // Lấy chi tiết một bài đăng theo ID
 export const getPostById = async (postId: string): Promise<any | null> => {
   try {
-    const postRef = doc(getFirestore(), 'Posts', postId);
-    const postSnap = await getDoc(postRef);
+    // Try with capitalized collection name first
+    let postRef = doc(getFirestore(), 'Posts', postId);
+    let postSnap = await getDoc(postRef);
     
-    if (postSnap.exists) {
-      return { id: postSnap.id, ...postSnap.data() };
+    // If not found in 'Posts', try with lowercase 'posts'
+    if (!postSnap.exists) {
+      console.log(`Post ${postId} not found in 'Posts' collection, trying 'posts'`);
+      postRef = doc(getFirestore(), 'posts', postId);
+      postSnap = await getDoc(postRef);
+      
+      if (!postSnap.exists) {
+        console.error(`Post ${postId} not found in either collection`);
+        return null;
+      } else {
+        console.log(`Post ${postId} found in lowercase 'posts' collection`);
+      }
+    } else {
+      console.log(`Post ${postId} found in 'Posts' collection`);
+    }
+    
+    const postData = postSnap.data();
+    if (postData) {
+      console.log(`Post ${postId} data:`, postData);
+      console.log(`Comment count from database: ${postData.commentCount || 0}`);
+      
+      // Ensure commentCount is never undefined
+      return { 
+        id: postSnap.id, 
+        ...postData,
+        commentCount: postData.commentCount || 0 
+      };
     }
     
     return null;

@@ -21,8 +21,7 @@ import { colors } from '../../utils/colors';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { login } from '../../services/authServices';
 import { RootStackParamList } from '../../types/stackparamlist';
-import { AdminStackParamList } from '../../types/stackparamlist'
-import HomeScreen from '../user/HomeScreen';
+
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Login'>;
 
@@ -34,30 +33,43 @@ export default function LoginScreen() {
     const [emailError, setEmailError] = useState('');
     const [passwordError, setPasswordError] = useState('');
 
-    const validateForm = () => {
-        let isValid = true;
+const validateForm = () => {
+    let isValid = true;
 
-        // Validate email
-        if (!email.trim()) {
-            setEmailError('Vui lòng nhập email');
-            isValid = false;
-        } else if (!/\S+@\S+\.\S+/.test(email)) {
-            setEmailError('Email không hợp lệ');
-            isValid = false;
-        } else {
-            setEmailError('');
-        }
+    // Validate email
+    if (!email.trim()) {
+        setEmailError('Vui lòng nhập email');
+        isValid = false;
+    } else if (!/\S+@\S+\.\S+/.test(email)) {
+        setEmailError('Email không hợp lệ');
+        isValid = false;
+    } else if (email.length > 50) {
+        setEmailError('Email không được vượt quá 50 ký tự');
+        isValid = false;
+    } else {
+        setEmailError('');
+    }
 
-        // Validate password
-        if (!password) {
-            setPasswordError('Vui lòng nhập mật khẩu');
-            isValid = false;
-        } else {
-            setPasswordError('');
-        }
+    // Validate password
+    if (!password) {
+        setPasswordError('Vui lòng nhập mật khẩu');
+        isValid = false;
+    } else if (password.length < 6) {
+        setPasswordError('Mật khẩu phải có ít nhất 6 ký tự');
+        isValid = false;
+    } else if (!/(?=.*[A-Za-z])(?=.*\d)/.test(password)) {
+        setPasswordError('Mật khẩu phải chứa ít nhất 1 chữ cái và 1 số');
+        isValid = false;
+    } else if (/\s/.test(password)) {
+        setPasswordError('Mật khẩu không được chứa khoảng trắng');
+        isValid = false;
+    } else {
+        setPasswordError('');
+    }
 
-        return isValid;
-    };
+    return isValid;
+};
+
 
     const handleLogin = async () => {
         setEmailError('');
@@ -70,7 +82,6 @@ export default function LoginScreen() {
         setLoading(true);
     try {
   const result = await login(email, password);
-
   if (!result.success) {
     const errorMessage = result.message || 'Đăng nhập thất bại';
     if (errorMessage.toLowerCase().includes('email')) {
@@ -81,6 +92,7 @@ export default function LoginScreen() {
       // Các lỗi khác chung chung
       setEmailError(errorMessage);
     }
+    setLoading(false); // Tắt loading khi login thất bại
     return;
   }
 
@@ -100,10 +112,8 @@ export default function LoginScreen() {
 } catch (error: any) {
   console.error('Login error:', error.message);
   setEmailError('Đã xảy ra lỗi, vui lòng thử lại.');
+  setLoading(false);
 }
- {
-            setLoading(false);
-        }
     };
 
     return (

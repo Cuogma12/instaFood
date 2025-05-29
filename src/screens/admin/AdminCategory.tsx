@@ -8,7 +8,7 @@ import { uploadMediaToCloudinary } from '../../services/mediaServices';
 import Icon from 'react-native-vector-icons/FontAwesome';
 
 const CATEGORY_TYPES = [
-  { label: 'Bình thường', value: 'normal' },
+  { label: 'Bình thường', value: 'general' },
   { label: 'Công thức nấu ăn', value: 'recipe' },
   { label: 'Đánh giá món ăn', value: 'review' }
 ];

@@ -28,9 +28,8 @@ const categories = [
     description: 'Các món ăn đặc biệt cho dịp lễ',
     imageUrl: null,
     createdAt: serverTimestamp(),
-  },
-  {
-    type: 'normal',
+  },  {
+    type: 'general',
     name: 'Thực phẩm chay',
     description: 'Các món ăn chay ngon miệng và bổ dưỡng',
     imageUrl: null,
@@ -77,23 +76,20 @@ const categories = [
     description: 'Dimsum, vịt quay Bắc Kinh, mì xào',
     imageUrl: null,
     createdAt: serverTimestamp(),
-  },
-  {
-    type: 'normal',
+  },  {
+    type: 'general',
     name: 'Ăn sáng',
     description: 'Các món ăn sáng phổ biến',
     imageUrl: null,
     createdAt: serverTimestamp(),
-  },
-  {
-    type: 'normal',
+  },  {
+    type: 'general',
     name: 'Ăn trưa',
     description: 'Các món ăn trưa tiện lợi',
     imageUrl: null,
     createdAt: serverTimestamp(),
-  },
-  {
-    type: 'normal',
+  },  {
+    type: 'general',
     name: 'Ăn tối',
     description: 'Các món ăn tối ngon miệng',
     imageUrl: null,
@@ -126,23 +122,20 @@ const categories = [
     description: 'Các món ăn vặt tuổi teen',
     imageUrl: null,
     createdAt: serverTimestamp(),
-  },
-  {
-    type: 'normal',
+  },  {
+    type: 'general',
     name: 'Đồ uống',
     description: 'Nước ép, sinh tố, trà sữa, cà phê',
     imageUrl: null,
     createdAt: serverTimestamp(),
-  },
-  {
-    type: 'normal',
+  },  {
+    type: 'general',
     name: 'Bánh ngọt',
     description: 'Bánh kem, cupcake, cookies',
     imageUrl: null,
     createdAt: serverTimestamp(),
-  },
-  {
-    type: 'normal',
+  },  {
+    type: 'general',
     name: 'Đồ ăn nhanh',
     description: 'Hamburger, gà rán, khoai tây chiên',
     imageUrl: null,

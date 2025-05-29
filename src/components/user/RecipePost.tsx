@@ -16,22 +16,36 @@ const MAX_LINES = 6;
 const RecipePost: React.FC<RecipePostProps> = ({ recipeDetails, caption }) => {
   const [showFull, setShowFull] = useState(false);
 
-  // Gộp nguyên liệu và hướng dẫn thành 1 mảng dòng
-  const contentLines = [
-    ...recipeDetails.ingredients.map(ing => `• ${ing}`),
-    ...recipeDetails.instructions.map((inst, idx) => `${idx + 1}. ${inst}`)
-  ];
-  const shouldTruncate = contentLines.length > MAX_LINES;
-  const displayedLines = showFull ? contentLines : contentLines.slice(0, MAX_LINES);
+  const ingredients = recipeDetails.ingredients.map(ing => `• ${ing}`);
+  const instructions = recipeDetails.instructions.map((inst, idx) => `${idx + 1}. ${inst}`);
+
+  const combinedLines = [...ingredients, ...instructions];
+  const shouldTruncate = combinedLines.length > MAX_LINES;
+
+  const displayedIngredients = showFull
+    ? ingredients
+    : ingredients.slice(0, Math.max(0, MAX_LINES));
+
+  const displayedInstructions = showFull
+    ? instructions
+    : ingredients.length >= MAX_LINES
+      ? []
+      : instructions.slice(0, MAX_LINES - ingredients.length);
 
   return (
     <View style={styles.container}>
-      <Text style={styles.recipeName}>🍳 {recipeDetails.recipeName}</Text>
       {caption ? <Text style={styles.caption}>{caption}</Text> : null}
-      <Text style={styles.sectionTitle}>📝 Nguyên liệu & Cách nấu:</Text>
+
+      <Text style={styles.sectionTitle}>🧂 Nguyên liệu:</Text>
       <Text style={styles.content}>
-        {displayedLines.join('\n')}
+        {displayedIngredients.join('\n') || ''}
       </Text>
+
+      <Text style={styles.sectionTitle}>🍲 Cách nấu:</Text>
+      <Text style={styles.content}>
+        {displayedInstructions.join('\n') || ''}
+      </Text>
+
       {shouldTruncate && (
         <TouchableOpacity
           onPress={() => setShowFull(!showFull)}
@@ -62,14 +76,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.text,
     lineHeight: 24,
-    marginBottom: 12,
+    marginBottom: -15,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.text,
-    marginTop: 12,
-    marginBottom: 8,
+    marginTop: 20,
+    marginBottom: 20,
   },
   content: {
     fontSize: 16,
@@ -78,10 +92,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F9FA',
     padding: 16,
     borderRadius: 12,
+    marginTop: -20,
   },
   readMoreButton: {
-    marginTop: 8,
-    marginBottom: 4,
+    marginTop: -15,
+    marginBottom: 5,
   },
   readMoreText: {
     color: colors.primary,

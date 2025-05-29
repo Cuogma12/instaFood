@@ -2,7 +2,7 @@
 export enum PostType {
   RECIPE = 'recipe',      // Công thức nấu ăn
   REVIEW = 'review',      // Đánh giá món ăn
-  GENERAL = 'normal'     // Bài đăng thông thường
+  GENERAL = 'general'     // Bài đăng thông thường
 }
 
 // Interface cơ bản cho bài đăng
@@ -21,14 +21,6 @@ export interface BasePost {
   categoryIds?: string[]; // Liên kết với Categories
   postType: PostType;
   createdAt: Date;
-  location?: {
-    name: string;
-    address?: string;
-    coordinates?: {
-      latitude: number;
-      longitude: number;
-    };
-  };
 }
 
 // Công thức nấu ăn
@@ -56,13 +48,7 @@ export interface ReviewPost extends BasePost {
     cons: string[];         // Điểm chưa tốt
     restaurantInfo?: {
       name: string;         // Tên nhà hàng
-      cuisineType?: string[]; // Loại ẩm thực
-      priceRange?: 'low' | 'medium' | 'high'; // Mức giá
-      contactInfo?: {
-        phone?: string;
-        website?: string;
-      };
-      openingHours?: string;
+      address?: string;     // Địa chỉ nhà hàng
     };
   };
 }
@@ -86,10 +72,6 @@ export interface CreatePostData {
   location?: {
     name: string;
     address?: string;
-    coordinates?: {
-      latitude: number;
-      longitude: number;
-    };
   };
   recipeDetails?: RecipePost['recipeDetails'];
   reviewDetails?: ReviewPost['reviewDetails'];

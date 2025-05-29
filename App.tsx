@@ -1,19 +1,21 @@
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import AppNavigator from './src/navigation/AppNavigator';
-import auth from '@react-native-firebase/auth';
 import { View, Text } from 'react-native';
 import {seedCategories} from './src/utils/categorySeed';
-export default function App() {
-  const [initializing, setInitializing] = useState(true);
-  const [authError, setAuthError] = useState<Error | null>(null);
+import { PostProvider } from './src/components/context/PostContext';
 
+export default function App() {
   // useEffect(() => {
   //   seedCategories();
   // }, []);
-  return (
+  
+  // Ensure the app is properly initialized and ready to use
+    return (
     <NavigationContainer>
-      <AppNavigator />
+      <PostProvider>
+        <AppNavigator />
+      </PostProvider>
     </NavigationContainer>
   );
 }

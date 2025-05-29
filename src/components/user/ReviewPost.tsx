@@ -12,6 +12,7 @@ interface ReviewPostProps {
     cons: string[];
     restaurantInfo?: {
       name: string;
+      address?: string;
       cuisineType?: string[];
       priceRange?: 'low' | 'medium' | 'high';
       contactInfo?: {
@@ -22,6 +23,11 @@ interface ReviewPostProps {
     };
   };
   caption?: string;
+  hashtags?: string[];
+  category?: {
+    categoryId: string;
+    name: string;
+  };
   location?: {
     name: string;
     address?: string;
@@ -30,10 +36,15 @@ interface ReviewPostProps {
 
 const CAPTION_LIMIT = 150;
 
-const ReviewPost: React.FC<ReviewPostProps> = ({ reviewDetails, caption, location }) => {
+const ReviewPost: React.FC<ReviewPostProps> = ({ 
+  reviewDetails, 
+  caption, 
+  location,
+  hashtags,
+  category
+}) => {
   const [showFullContent, setShowFullContent] = useState(false);
   const [showRestaurantInfo, setShowRestaurantInfo] = useState(false);
-
   const renderRestaurantInfo = () => {
     if (!reviewDetails.restaurantInfo) return null;
 
@@ -43,48 +54,41 @@ const ReviewPost: React.FC<ReviewPostProps> = ({ reviewDetails, caption, locatio
         <View style={styles.restaurantHeader}>
           <Icon name="cutlery" size={16} color={colors.primary} />
           <Text style={styles.restaurantName}>{restaurantInfo.name}</Text>
-          <TouchableOpacity onPress={() => setShowRestaurantInfo(!showRestaurantInfo)}>
-            <Icon name={showRestaurantInfo ? "chevron-up" : "chevron-down"} size={14} color={colors.darkGray} />
-          </TouchableOpacity>
         </View>
 
         {showRestaurantInfo && (
           <View style={styles.restaurantDetails}>
+            {/* {restaurantInfo.address && (
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Địa chỉ:</Text>
+                <Text style={styles.infoValue}>{restaurantInfo.address}</Text>
+              </View>
+            )} */}
+            
             {restaurantInfo.cuisineType && restaurantInfo.cuisineType.length > 0 && (
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Loại ẩm thực:</Text>
-                <Text style={styles.infoValue}>{restaurantInfo.cuisineType.join(", ")}</Text>
+                <Text style={styles.infoValue}>{restaurantInfo.cuisineType.join(', ')}</Text>
               </View>
             )}
-
+            
             {restaurantInfo.priceRange && (
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Mức giá:</Text>
-                <Text style={styles.infoValue}>
-                  {restaurantInfo.priceRange === 'low' ? 'Rẻ' : 
-                   restaurantInfo.priceRange === 'medium' ? 'Trung bình' : 'Cao'}
-                </Text>
               </View>
             )}
-
-            {restaurantInfo.openingHours && (
-              <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Giờ mở cửa:</Text>
-                <Text style={styles.infoValue}>{restaurantInfo.openingHours}</Text>
-              </View>
-            )}
-
+            
             {restaurantInfo.contactInfo?.phone && (
               <View style={styles.infoRow}>
                 <Text style={styles.infoLabel}>Điện thoại:</Text>
                 <Text style={styles.infoValue}>{restaurantInfo.contactInfo.phone}</Text>
               </View>
             )}
-
-            {restaurantInfo.contactInfo?.website && (
+            
+            {restaurantInfo.openingHours && (
               <View style={styles.infoRow}>
-                <Text style={styles.infoLabel}>Website:</Text>
-                <Text style={styles.infoValue}>{restaurantInfo.contactInfo.website}</Text>
+                <Text style={styles.infoLabel}>Giờ mở cửa:</Text>
+                <Text style={styles.infoValue}>{restaurantInfo.openingHours}</Text>
               </View>
             )}
           </View>
@@ -147,12 +151,37 @@ const ReviewPost: React.FC<ReviewPostProps> = ({ reviewDetails, caption, locatio
     </View>
   );
 
+  const renderHashtags = () => {
+    if (!hashtags || hashtags.length === 0) return null;
+    
+    return (
+      <View style={styles.hashtagsContainer}>
+        <Text style={styles.hashtagsText}>
+          {hashtags.map(tag => `#${tag}`).join(' ')}
+        </Text>
+      </View>
+    );
+  };
+  
+  const renderCategory = () => {
+    if (!category) return null;
+    
+    return (
+      <View style={styles.categoryContainer}>
+        <Icon name="tag" size={14} color={colors.primary} />
+        <Text style={styles.categoryText}>{category.name}</Text>
+      </View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       {caption && <Text style={styles.caption}>{caption}</Text>}
       {renderRestaurantInfo()}
       {renderLocation()}
       {renderRating()}
+      {renderCategory()}
+      {renderHashtags()}
     </View>
   );
 };
@@ -172,7 +201,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#F8F9FA',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
   },
   restaurantHeader: {
     flexDirection: 'row',
@@ -290,6 +318,31 @@ const styles = StyleSheet.create({
   conText: {
     marginLeft: 8,
     fontSize: 15,
+    color: colors.text,
+  },
+  hashtagsContainer: {
+    marginTop: 12,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    padding: 12,
+  },
+  hashtagsText: {
+    color: colors.primary,
+    fontSize: 14,
+  },
+  categoryContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+    marginTop: 12,
+  },
+  categoryText: {
+    marginLeft: 6,
+    fontSize: 14,
     color: colors.text,
   }
 });

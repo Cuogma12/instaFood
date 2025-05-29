@@ -84,6 +84,12 @@ export default function RegisterScreen() {
         } else if (password.length < 6) {
             setPasswordError('Mật khẩu phải có ít nhất 6 ký tự');
             isValid = false;
+        } else if (!/(?=.*[A-Za-z])(?=.*\d)/.test(password)) {
+            setPasswordError('Mật khẩu phải chứa ít nhất 1 chữ cái và 1 số');
+            isValid = false;
+        } else if (/\s/.test(password)) {
+            setPasswordError('Mật khẩu không được chứa khoảng trắng');
+            isValid = false;
         }
 
         return isValid;
@@ -120,7 +126,7 @@ export default function RegisterScreen() {
     };
 
     return (
-        <ImageBackground 
+        <ImageBackground
             source={require('../../assets/images/backgroudlogin.png')}
             style={styles.backgroundImage}
         >
