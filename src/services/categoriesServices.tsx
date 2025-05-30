@@ -80,7 +80,6 @@ export const createCategory = async (categoryData: {
   name: string;
   description: string;
   imageUrl?: string;
-    parentId?: string;
   type: string;
 }): Promise<{ success: boolean; categoryId?: string; error?: string }> => {
   try {
@@ -109,7 +108,7 @@ export const updateCategory = async (
   updateData: {
     name?: string;
     description?: string;
-    imageUrl?: string;
+    imageUrl?: string | '';
     type?: string;
   }
 ): Promise<{ success: boolean; error?: string }> => {

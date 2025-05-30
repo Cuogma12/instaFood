@@ -22,7 +22,7 @@ export default function AdminCategory() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [creating, setCreating] = useState(false);
-  const [imageUrl, setImageUrl] = useState<string | undefined>(undefined);
+  const [imageUrl, setImageUrl] = useState<string | ''>('');
   const [uploadingImage, setUploadingImage] = useState(false);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
@@ -72,7 +72,7 @@ export default function AdminCategory() {
   const resetForm = () => {
     setName('');
     setDescription('');
-    setImageUrl(undefined);
+    setImageUrl('');
     setType('');
     setEditingCategory(null);
   };
@@ -148,7 +148,7 @@ export default function AdminCategory() {
     setName(category.name);
     setDescription(category.description);
     setType(category.type);
-    setImageUrl(category.imageUrl);
+    setImageUrl(category.imageUrl || '');
     setModalVisible(true);
   };
 
